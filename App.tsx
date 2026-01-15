@@ -12,7 +12,9 @@ import {
   addDoc, 
   updateDoc, 
   deleteDoc, 
-  doc
+  doc,
+  query,
+  where
 } from "firebase/firestore";
 
 export interface ColumnFilters {
@@ -32,16 +34,17 @@ interface CompanyInfo {
   originalName?: string;
   cnpj: string;
   alternativeNames?: string[];
+  hidden?: boolean; // Marcação para não exibir caso consolidada
 }
 
 interface UserInfo {
   id?: string;
-  userId: string; // ID aleatório gerado
+  userId: string;
   login: string;
   email: string;
   password?: string;
   role: 'admin' | 'comum';
-  active: boolean; // Status de ativação
+  active: boolean;
 }
 
 const App: React.FC = () => {
@@ -58,13 +61,13 @@ const App: React.FC = () => {
   const [isAddingCompany, setIsAddingCompany] = useState(false);
   const [newCompanyName, setNewCompanyName] = useState('');
   const [newCompanyCnpj, setNewCompanyCnpj] = useState('');
-  const [newCompanyAltName, setNewCompanyAltName] = useState('');
+  const [newCompanyAltNames, setNewCompanyAltNames] = useState('');
   
   const [editingCnpj, setEditingCnpj] = useState<string | null>(null);
   const [editNameValue, setEditNameValue] = useState('');
+  const [editCnpjValue, setEditCnpjValue] = useState('');
   const [editAltNameValue, setEditAltNameValue] = useState('');
 
-  // Estados para Usuários
   const [usersList, setUsersList] = useState<UserInfo[]>([]);
   const [isAddingUser, setIsAddingUser] = useState(false);
   const [editingUser, setEditingUser] = useState<UserInfo | null>(null);
@@ -91,18 +94,9 @@ const App: React.FC = () => {
     notes: ''
   });
 
+  // Filtra empresas para exibição: remove as marcadas como hidden
   const uniqueCompanies = useMemo(() => {
-    const seenCnpjs = new Set();
-    return registeredCompanies.filter(c => {
-      if (seenCnpjs.has(c.cnpj)) return false;
-      const isAltOfAnother = registeredCompanies.some(other => 
-        other.cnpj !== c.cnpj && 
-        other.alternativeNames?.some(alt => alt.trim().toLowerCase() === c.name.trim().toLowerCase())
-      );
-      if (isAltOfAnother) return false;
-      seenCnpjs.add(c.cnpj);
-      return true;
-    });
+    return registeredCompanies.filter(c => !c.hidden);
   }, [registeredCompanies]);
 
   useEffect(() => {
@@ -151,18 +145,30 @@ const App: React.FC = () => {
     fetchData();
   }, []);
 
+  // Sincronização inteligente: evita duplicados checando nomes e nomenclaturas alternativas
   useEffect(() => {
     const syncCompanies = async () => {
-      const existingCnpjs = new Set(registeredCompanies.map(c => c.cnpj));
-      const newCompanies: CompanyInfo[] = [];
+      const existingNames = new Set(registeredCompanies.map(c => c.name.toLowerCase()));
+      const altNamesMap = new Set(registeredCompanies.flatMap(c => c.alternativeNames?.map(a => a.toLowerCase()) || []));
+      
+      const newCompaniesToAdd: CompanyInfo[] = [];
+      
       transactions.forEach(t => {
-        if (!existingCnpjs.has(t.ownerCnpj)) {
-          newCompanies.push({ name: t.ownerName, cnpj: t.ownerCnpj, alternativeNames: [] });
-          existingCnpjs.add(t.ownerCnpj);
+        const nameLower = t.ownerName.toLowerCase();
+        // Só adiciona se o nome não existir como principal ou alternativo de nenhuma empresa salva
+        if (!existingNames.has(nameLower) && !altNamesMap.has(nameLower)) {
+          newCompaniesToAdd.push({ 
+            name: t.ownerName, 
+            cnpj: t.ownerCnpj || '', 
+            alternativeNames: [],
+            hidden: false
+          });
+          existingNames.add(nameLower);
         }
       });
-      if (newCompanies.length > 0) {
-        for (const company of newCompanies) {
+
+      if (newCompaniesToAdd.length > 0) {
+        for (const company of newCompaniesToAdd) {
           try {
             const docRef = await addDoc(collection(db, "companies"), company);
             setRegisteredCompanies(prev => [...prev, { ...company, id: docRef.id }]);
@@ -170,7 +176,7 @@ const App: React.FC = () => {
         }
       }
     };
-    if (transactions.length > 0) syncCompanies();
+    if (transactions.length > 0 && registeredCompanies.length >= 0) syncCompanies();
   }, [transactions, registeredCompanies]);
 
   const filteredTransactions = useMemo(() => {
@@ -248,28 +254,77 @@ const App: React.FC = () => {
 
   const handleAddCompany = async (e: React.FormEvent) => {
     e.preventDefault();
-    const altNames = newCompanyAltName ? newCompanyAltName.split(',').map(n => n.trim()).filter(n => n !== "") : [];
-    const newCompany: CompanyInfo = { name: newCompanyName, cnpj: newCompanyCnpj, alternativeNames: altNames };
+    const altNames = newCompanyAltNames ? newCompanyAltNames.split(',').map(n => n.trim()).filter(n => n !== "") : [];
+    const newCompany: CompanyInfo = { 
+      name: newCompanyName, 
+      cnpj: newCompanyCnpj || '', 
+      alternativeNames: altNames,
+      hidden: false
+    };
+    
+    // Antes de adicionar, verifica se já existe uma empresa com esse nome principal para não duplicar ID
+    const exists = registeredCompanies.find(c => c.name.toLowerCase() === newCompanyName.toLowerCase());
+    if (exists) {
+      alert("Uma empresa com este nome já está cadastrada.");
+      return;
+    }
+
     const docRef = await addDoc(collection(db, "companies"), newCompany);
     setRegisteredCompanies(prev => [...prev, { ...newCompany, id: docRef.id }]);
-    setNewCompanyName(''); setNewCompanyCnpj(''); setNewCompanyAltName(''); setIsAddingCompany(false);
+    setNewCompanyName(''); setNewCompanyCnpj(''); setNewCompanyAltNames(''); setIsAddingCompany(false);
   };
 
   const startEditCompany = (cnpj: string, currentName: string) => {
-    const company = registeredCompanies.find(c => c.cnpj === cnpj);
-    setEditingCnpj(cnpj); setEditNameValue(currentName);
-    setEditAltNameValue(company?.alternativeNames?.join(', ') || '');
+    const company = registeredCompanies.find(c => c.cnpj === cnpj || (c.cnpj === '' && c.name === currentName));
+    if (!company) return;
+    setEditingCnpj(cnpj || company.name); // Usa nome como fallback se CNPJ vazio
+    setEditNameValue(company.name);
+    setEditCnpjValue(company.cnpj);
+    setEditAltNameValue(company.alternativeNames?.join(', ') || '');
   };
 
-  const saveCompanyEdit = async (cnpj: string) => {
-    const company = registeredCompanies.find(c => c.cnpj === cnpj);
+  const saveCompanyEdit = async (identifier: string) => {
+    const company = registeredCompanies.find(c => c.cnpj === identifier || c.name === identifier);
     if (!company?.id) return;
+    
     const altNames = editAltNameValue ? editAltNameValue.split(',').map(n => n.trim()).filter(n => n !== "") : [];
     const hasNameChanged = editNameValue.trim() !== company.name.trim();
     const updatedOriginalName = hasNameChanged ? company.name : (company.originalName || '');
-    await updateDoc(doc(db, "companies", company.id), { name: editNameValue, originalName: updatedOriginalName, alternativeNames: altNames });
-    setRegisteredCompanies(prev => prev.map(c => c.cnpj === cnpj ? { ...c, name: editNameValue, originalName: updatedOriginalName, alternativeNames: altNames } : c));
-    setTransactions(prev => prev.map(t => t.ownerCnpj === cnpj ? { ...t, ownerName: editNameValue } : t));
+    
+    // Lógica de Consolidação/Marcação:
+    // Se incluímos uma nomenclatura que já existe como empresa separada, marcamos a separada como hidden
+    const affectedCompanies = registeredCompanies.filter(c => 
+      c.id !== company.id && 
+      (altNames.some(a => a.toLowerCase() === c.name.toLowerCase()) || editNameValue.toLowerCase() === c.name.toLowerCase())
+    );
+
+    for (const aff of affectedCompanies) {
+      if (aff.id) await updateDoc(doc(db, "companies", aff.id), { hidden: true });
+    }
+
+    const updates = { 
+      name: editNameValue, 
+      cnpj: editCnpjValue,
+      originalName: updatedOriginalName, 
+      alternativeNames: altNames 
+    };
+
+    await updateDoc(doc(db, "companies", company.id), updates);
+    
+    setRegisteredCompanies(prev => prev.map(c => {
+      if (c.id === company.id) return { ...c, ...updates };
+      if (affectedCompanies.some(aff => aff.id === c.id)) return { ...c, hidden: true };
+      return c;
+    }));
+
+    // Atualiza transações se CNPJ ou nome mudou
+    setTransactions(prev => prev.map(t => {
+      if (t.ownerCnpj === company.cnpj || t.ownerName === company.name) {
+         return { ...t, ownerName: editNameValue, ownerCnpj: editCnpjValue };
+      }
+      return t;
+    }));
+
     setEditingCnpj(null);
   };
 
@@ -343,7 +398,7 @@ const App: React.FC = () => {
                   </div>
                   <select className="bg-white p-2 rounded-xl text-[10px] font-black border border-slate-100" value={selectedCnpj || ""} onChange={(e) => setSelectedCnpj(e.target.value || null)}>
                     <option value="">Grupo Capital Dois</option>
-                    {uniqueCompanies.map(c => <option key={c.cnpj} value={c.cnpj}>{c.name}</option>)}
+                    {uniqueCompanies.map(c => <option key={c.cnpj || c.id} value={c.cnpj}>{c.name}</option>)}
                   </select>
                 </div>
               </div>
@@ -384,15 +439,18 @@ const App: React.FC = () => {
         <div className="bg-white p-12 rounded-[3rem] border border-slate-100 print-hidden">
           <div className="flex justify-between items-center mb-12"><h2 className="text-2xl font-black">Empresas</h2><button onClick={() => setIsAddingCompany(true)} className="bg-indigo-600 text-white font-black px-6 py-3 rounded-xl text-xs uppercase">Cadastrar</button></div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {uniqueCompanies.map(c => (
-              <div key={c.cnpj} className="p-8 bg-slate-50 rounded-[2rem] border group hover:border-indigo-200 transition-all shadow-sm hover:shadow-md">
+            {uniqueCompanies.map(c => {
+              const isEditing = editingCnpj === c.cnpj || editingCnpj === c.name;
+              return (
+              <div key={c.id} className="p-8 bg-slate-50 rounded-[2rem] border group hover:border-indigo-200 transition-all shadow-sm hover:shadow-md">
                 <div className="flex justify-between mb-4">
                   <p className="text-[9px] font-black uppercase text-indigo-400">ID: {c.id?.substring(0, 8)}...</p>
-                  <button onClick={() => editingCnpj === c.cnpj ? saveCompanyEdit(c.cnpj) : startEditCompany(c.cnpj, c.name)} className="text-[10px] font-black uppercase text-slate-400 hover:text-indigo-600">{editingCnpj === c.cnpj ? 'Salvar' : 'Editar'}</button>
+                  <button onClick={() => isEditing ? saveCompanyEdit(editingCnpj!) : startEditCompany(c.cnpj, c.name)} className="text-[10px] font-black uppercase text-slate-400 hover:text-indigo-600">{isEditing ? 'Salvar' : 'Editar'}</button>
                 </div>
-                {editingCnpj === c.cnpj ? (
+                {isEditing ? (
                   <div className="space-y-3">
                     <input className="w-full border rounded-lg p-2 font-bold text-xs" value={editNameValue} onChange={e => setEditNameValue(e.target.value)} placeholder="Nome" />
+                    <input className="w-full border rounded-lg p-2 font-bold text-xs" value={editCnpjValue} onChange={e => setEditCnpjValue(e.target.value)} placeholder="CNPJ" />
                     <input className="w-full border rounded-lg p-2 font-bold text-xs" value={editAltNameValue} onChange={e => setEditAltNameValue(e.target.value)} placeholder="Nomenclaturas" />
                   </div>
                 ) : (
@@ -401,10 +459,10 @@ const App: React.FC = () => {
                     {c.originalName && c.originalName !== c.name && (
                       <p className="text-[10px] text-slate-400 font-bold italic mt-0.5">{c.originalName}</p>
                     )}
-                    <p className="text-xs text-slate-500 font-mono mt-2">{c.cnpj}</p>
+                    <p className="text-xs text-slate-500 font-mono mt-2">{c.cnpj || 'CNPJ não informado'}</p>
                     {c.alternativeNames && c.alternativeNames.length > 0 && (
                       <div className="mt-3 pt-3 border-t border-slate-100">
-                        <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Outras Nomenclaturas:</p>
+                        <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Nomenclaturas Consolidadas:</p>
                         <div className="flex flex-wrap gap-1">
                           {c.alternativeNames.map(alt => (
                             <span key={alt} className="px-1.5 py-0.5 bg-slate-200 text-slate-600 rounded text-[9px] font-bold">{alt}</span>
@@ -415,15 +473,24 @@ const App: React.FC = () => {
                   </>
                 )}
               </div>
-            ))}
+            )})}
           </div>
           {isAddingCompany && (
             <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-[100]">
               <div className="bg-white p-10 rounded-[2.5rem] w-full max-w-md shadow-2xl">
                 <h3 className="text-2xl font-black mb-6">Nova Empresa</h3>
                 <form onSubmit={handleAddCompany} className="space-y-4">
-                  <input required placeholder="Nome / Razão" value={newCompanyName} onChange={e => setNewCompanyName(e.target.value)} className="w-full p-4 bg-slate-50 border rounded-xl font-bold text-sm" />
-                  <input required placeholder="CNPJ" value={newCompanyCnpj} onChange={e => setNewCompanyCnpj(e.target.value)} className="w-full p-4 bg-slate-50 border rounded-xl font-bold text-sm" />
+                  <input required placeholder="Nome / Razão Principal" value={newCompanyName} onChange={e => setNewCompanyName(e.target.value)} className="w-full p-4 bg-slate-50 border rounded-xl font-bold text-sm" />
+                  <input placeholder="CNPJ (Opcional)" value={newCompanyCnpj} onChange={e => setNewCompanyCnpj(e.target.value)} className="w-full p-4 bg-slate-50 border rounded-xl font-bold text-sm" />
+                  <div>
+                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Essa empresa possui outras nomenclaturas?</label>
+                    <textarea 
+                      placeholder="Ex: Nome Fantasia, Siglas (separados por vírgula)" 
+                      value={newCompanyAltNames} 
+                      onChange={e => setNewCompanyAltNames(e.target.value)} 
+                      className="w-full p-4 bg-slate-50 border rounded-xl font-bold text-sm h-24 resize-none"
+                    />
+                  </div>
                   <div className="flex gap-3 pt-6"><button type="submit" className="flex-1 bg-indigo-600 text-white py-4 rounded-xl font-black uppercase text-xs">Salvar</button><button type="button" onClick={() => setIsAddingCompany(false)} className="flex-1 bg-slate-100 py-4 rounded-xl font-black uppercase text-xs">Cancelar</button></div>
                 </form>
               </div>
@@ -563,7 +630,6 @@ const App: React.FC = () => {
         )}
       </div>
       
-      {/* LAYOUT DO PDF PROFISSIONAL E ROBUSTO (OCULTO EM TELA) */}
       <div id="report-print-area" style={{ fontFamily: '"Segoe UI", Tahoma, sans-serif', width: '100%', boxSizing: 'border-box' }}>
          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '40px', borderBottom: '2px solid #334155', paddingBottom: '20px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
