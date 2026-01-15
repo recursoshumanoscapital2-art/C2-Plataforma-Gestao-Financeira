@@ -1,0 +1,306 @@
+
+import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { Transaction, TransactionType } from '../types';
+import { ColumnFilters } from '../App';
+
+interface TransactionTableProps {
+  transactions: Transaction[];
+  allTransactions: Transaction[];
+  onUpdateTransaction: (id: string, updates: Partial<Transaction>) => void;
+  selectedCnpj: string | null;
+  columnFilters: ColumnFilters;
+  onColumnFilterChange: (field: keyof ColumnFilters, value: string) => void;
+}
+
+const TransactionTable: React.FC<TransactionTableProps> = ({ 
+  transactions, 
+  allTransactions,
+  onUpdateTransaction, 
+  selectedCnpj,
+  columnFilters,
+  onColumnFilterChange
+}) => {
+  const [editingCell, setEditingCell] = useState<{ id: string, field: keyof Transaction } | null>(null);
+  const [tempValue, setTempValue] = useState("");
+  const [activeFilter, setActiveFilter] = useState<string | null>(null);
+  const filterRef = useRef<HTMLDivElement>(null);
+
+  const startEditing = (id: string, field: keyof Transaction, currentVal: string) => {
+    setEditingCell({ id, field });
+    setTempValue(currentVal);
+  };
+
+  const saveEdit = () => {
+    if (editingCell) {
+      onUpdateTransaction(editingCell.id, { [editingCell.field]: tempValue });
+      setEditingCell(null);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') saveEdit();
+    if (e.key === 'Escape') setEditingCell(null);
+  };
+
+  // Close filter dropdown on click outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (filterRef.current && !filterRef.current.contains(event.target as Node)) {
+        setActiveFilter(null);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
+
+  // Compute unique values from ALL transactions for complete dropdowns
+  const uniqueData = useMemo(() => {
+    return {
+      owners: Array.from(new Set(allTransactions.map(t => t.ownerName))).sort(),
+      banks: Array.from(new Set(allTransactions.map(t => t.ownerBank))).sort(),
+      origins: Array.from(new Set(allTransactions.map(t => t.origin))).sort(),
+      counterparties: Array.from(new Set(allTransactions.filter(t => t.type === TransactionType.OUTFLOW).map(t => t.counterpartyName))).sort(),
+    };
+  }, [allTransactions]);
+
+  if (transactions.length === 0) return null;
+
+  const toggleFilter = (column: string) => {
+    setActiveFilter(activeFilter === column ? null : column);
+  };
+
+  const HeaderCell = ({ label, field, type = 'select', options = [], align = 'left' }: { label: string, field: keyof ColumnFilters, type?: 'select' | 'date' | 'text', options?: string[], align?: 'left' | 'right' }) => {
+    const isActive = activeFilter === field;
+    const hasFilter = columnFilters[field] !== '';
+
+    return (
+      <th className={`px-6 py-5 relative ${align === 'right' ? 'text-right' : ''}`}>
+        <button 
+          onClick={() => toggleFilter(field)}
+          className={`flex items-center gap-2 text-[10px] font-black uppercase tracking-widest transition-colors hover:text-indigo-600 focus:outline-none ${
+            align === 'right' ? 'ml-auto flex-row-reverse' : ''
+          } ${
+            hasFilter ? 'text-indigo-600' : 'text-slate-400'
+          }`}
+        >
+          {label}
+          <svg xmlns="http://www.w3.org/2000/svg" className={`h-3 w-3 transition-transform ${isActive ? 'rotate-180' : ''}`} viewBox="0 0 20 20" fill="currentColor">
+            <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+          </svg>
+        </button>
+
+        {isActive && (
+          <div ref={filterRef} className={`absolute ${align === 'right' ? 'right-6' : 'left-6'} top-full mt-1 z-50 bg-white border border-slate-200 shadow-2xl rounded-xl p-3 min-w-[200px] animate-in fade-in zoom-in duration-150 text-left`}>
+            {type === 'date' ? (
+              <div className="space-y-2">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Filtrar por Data</p>
+                <input 
+                  type="date" 
+                  autoFocus
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-2 text-xs outline-none focus:border-indigo-400 font-bold text-slate-700"
+                  value={columnFilters.date}
+                  onChange={(e) => onColumnFilterChange('date', e.target.value)}
+                />
+                {columnFilters.date && (
+                  <button 
+                    onClick={() => { onColumnFilterChange('date', ''); setActiveFilter(null); }}
+                    className="text-[9px] text-rose-500 font-bold hover:underline"
+                  >
+                    Limpar Filtro
+                  </button>
+                )}
+              </div>
+            ) : type === 'select' ? (
+              <div className="max-h-60 overflow-y-auto custom-scrollbar space-y-1">
+                <button 
+                  onClick={() => { onColumnFilterChange(field, ''); setActiveFilter(null); }}
+                  className={`w-full text-left px-3 py-2 rounded-lg text-xs font-bold transition-colors ${columnFilters[field] === '' ? 'bg-indigo-50 text-indigo-600' : 'text-slate-500 hover:bg-slate-50'}`}
+                >
+                  Tudo
+                </button>
+                {options.map(opt => (
+                  <button 
+                    key={opt}
+                    onClick={() => { onColumnFilterChange(field, opt); setActiveFilter(null); }}
+                    className={`w-full text-left px-3 py-2 rounded-lg text-xs font-bold transition-colors truncate ${columnFilters[field] === opt ? 'bg-indigo-50 text-indigo-600' : 'text-slate-500 hover:bg-slate-50'}`}
+                  >
+                    {opt}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Filtrar {label}</p>
+                <input 
+                  type="text" 
+                  autoFocus
+                  placeholder={`Digite um ${label.toLowerCase()}...`}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-2 text-xs outline-none focus:border-indigo-400 font-bold text-slate-700"
+                  value={columnFilters[field]}
+                  onChange={(e) => onColumnFilterChange(field, e.target.value)}
+                />
+                {columnFilters[field] && (
+                  <button 
+                    onClick={() => onColumnFilterChange(field, '')}
+                    className="text-[9px] text-rose-500 font-bold hover:underline"
+                  >
+                    Limpar
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </th>
+    );
+  };
+
+  return (
+    <div className="bg-white rounded-[2rem] shadow-xl shadow-slate-200/50 border border-slate-100 overflow-hidden mb-12">
+      <div className="p-8 border-b border-slate-50 flex justify-between items-center bg-white">
+        <div>
+          <h3 className="text-slate-900 font-black text-xl tracking-tight">Histórico Detalhado</h3>
+          <p className="text-slate-400 text-[10px] font-bold uppercase tracking-widest mt-1 flex items-center gap-2">
+            <span className="w-1.5 h-1.5 bg-indigo-500 rounded-full"></span>
+            {transactions.length} transações encontradas • Clique no cabeçalho para filtrar
+          </p>
+        </div>
+        
+        {Object.values(columnFilters).some(v => v !== '') && (
+          <button 
+            onClick={() => {
+              Object.keys(columnFilters).forEach(key => onColumnFilterChange(key as keyof ColumnFilters, ''));
+            }}
+            className="flex items-center gap-2 px-4 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all bg-rose-50 text-rose-600 border border-rose-100 hover:bg-rose-100"
+          >
+            Limpar Todos os Filtros
+          </button>
+        )}
+      </div>
+
+      <div className="overflow-x-auto custom-scrollbar">
+        <table className="w-full text-left border-collapse table-fixed min-w-[1200px]">
+          <thead>
+            <tr className="bg-slate-50/80 border-b border-slate-100">
+              <HeaderCell label="Data" field="date" type="date" />
+              <HeaderCell label="Empresa" field="ownerName" options={uniqueData.owners} />
+              <HeaderCell label="Banco" field="payingBank" options={uniqueData.banks} />
+              <HeaderCell label="Tipo" field="type" options={['entrada', 'saída']} />
+              <HeaderCell label="Origem" field="origin" options={uniqueData.origins} />
+              <HeaderCell label="Favorecido" field="counterpartyName" options={uniqueData.counterparties} />
+              <HeaderCell label="Valor" field="amount" type="text" align="right" />
+              <th className="px-6 py-5 w-52 text-[10px] font-black uppercase tracking-widest text-slate-400">Observações</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-50">
+            {transactions.map((t) => (
+              <tr key={t.id} className="hover:bg-indigo-50/20 transition-colors group">
+                <td className="px-6 py-4 text-[11px] font-bold text-slate-500 whitespace-nowrap">
+                  {t.date.split('T')[0].split('-').reverse().join('/')}
+                </td>
+
+                <td className="px-6 py-4">
+                  <div className="text-[11px] font-black text-slate-800 truncate" title={t.ownerName}>
+                    {t.ownerName}
+                  </div>
+                  <div className="text-[9px] text-slate-400 font-mono tracking-tight mt-0.5">{t.ownerCnpj}</div>
+                </td>
+
+                <td className="px-6 py-4">
+                  <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-600 truncate" title={t.ownerBank}>
+                    <div className="w-1.5 h-1.5 rounded-full bg-slate-300"></div>
+                    <span className="truncate">{t.ownerBank}</span>
+                  </div>
+                </td>
+
+                <td className="px-6 py-4 text-center">
+                  <span className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase inline-block border ${
+                    t.type === TransactionType.INFLOW 
+                    ? 'bg-emerald-50 text-emerald-700 border-emerald-100' 
+                    : 'bg-rose-50 text-rose-700 border-rose-100'
+                  }`}>
+                    {t.type}
+                  </span>
+                </td>
+
+                <td className="px-6 py-4">
+                  {editingCell?.id === t.id && editingCell.field === 'origin' ? (
+                    <input
+                      autoFocus
+                      className="w-full border-2 border-indigo-400 rounded-lg px-2 py-1.5 text-[11px] outline-none shadow-sm"
+                      value={tempValue}
+                      onChange={(e) => setTempValue(e.target.value)}
+                      onBlur={saveEdit}
+                      onKeyDown={handleKeyDown}
+                    />
+                  ) : (
+                    <div 
+                      onClick={() => startEditing(t.id, 'origin', t.origin)}
+                      className="text-[11px] font-bold text-slate-600 cursor-pointer border-b border-transparent hover:border-indigo-200 truncate inline-block"
+                    >
+                      {t.origin}
+                    </div>
+                  )}
+                </td>
+
+                <td className="px-6 py-4">
+                  {editingCell?.id === t.id && editingCell.field === 'counterpartyName' ? (
+                    <input
+                      autoFocus
+                      className="w-full border-2 border-indigo-400 rounded-lg px-2 py-1.5 text-[11px] outline-none shadow-sm"
+                      value={tempValue}
+                      onChange={(e) => setTempValue(e.target.value)}
+                      onBlur={saveEdit}
+                      onKeyDown={handleKeyDown}
+                    />
+                  ) : (
+                    <div 
+                      onClick={() => t.type === TransactionType.OUTFLOW ? startEditing(t.id, 'counterpartyName', t.counterpartyName) : null}
+                      className={`cursor-pointer group/item ${t.type !== TransactionType.OUTFLOW ? 'cursor-default pointer-events-none' : ''}`}
+                    >
+                      <div className="text-[12px] font-black text-slate-900 truncate border-b border-transparent group-hover/item:border-indigo-200 leading-tight inline-block">
+                        {t.type === TransactionType.OUTFLOW ? t.counterpartyName : '-'}
+                      </div>
+                      {t.type === TransactionType.OUTFLOW && <div className="text-[9px] text-slate-400 truncate mt-0.5 opacity-80">{t.description}</div>}
+                    </div>
+                  )}
+                </td>
+
+                <td className={`px-6 py-4 text-sm font-black text-right whitespace-nowrap ${
+                  t.type === TransactionType.INFLOW ? 'text-emerald-600' : 'text-slate-900'
+                }`}>
+                  <span className="text-[10px] text-slate-400 mr-1 font-bold">R$</span>
+                  {t.type === TransactionType.OUTFLOW ? '-' : ''} 
+                  {t.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                </td>
+
+                <td className="px-6 py-4">
+                  {editingCell?.id === t.id && editingCell.field === 'notes' ? (
+                    <input
+                      autoFocus
+                      className="w-full border-2 border-indigo-400 rounded-lg px-2 py-1.5 text-[11px] outline-none shadow-sm"
+                      placeholder="Nota..."
+                      value={tempValue}
+                      onChange={(e) => setTempValue(e.target.value)}
+                      onBlur={saveEdit}
+                      onKeyDown={handleKeyDown}
+                    />
+                  ) : (
+                    <div 
+                      onClick={() => startEditing(t.id, 'notes', t.notes)}
+                      className={`text-[10px] cursor-pointer border-b border-transparent hover:border-indigo-200 min-h-[1.2rem] italic leading-tight ${t.notes ? 'text-indigo-600 font-bold' : 'text-slate-300 font-medium'}`}
+                    >
+                      {t.notes || 'Adicionar obs...'}
+                    </div>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+};
+
+export default TransactionTable;

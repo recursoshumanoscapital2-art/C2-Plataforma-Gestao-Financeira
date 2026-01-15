@@ -1,0 +1,84 @@
+
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FlowState - Gestão Financeira</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @font-face {
+            font-family: 'Calibri Light';
+            src: local('Calibri Light'), local('Calibri-Light');
+            font-weight: 300;
+        }
+        body { 
+            font-family: 'Calibri Light', 'Calibri', 'Segoe UI', 'Tahoma', 'Arial', sans-serif;
+            font-weight: 300;
+        }
+        /* Overriding some bold weights to look better with Calibri stack */
+        .font-black { font-weight: 700; }
+        .font-bold { font-weight: 600; }
+        .font-semibold { font-weight: 500; }
+
+        /* Estilos específicos de impressão */
+        @media print {
+            body {
+                background: white !important;
+                margin: 0;
+                padding: 0;
+            }
+            .print-hidden {
+                display: none !important;
+            }
+            #report-print-area {
+                display: block !important;
+                padding: 20mm;
+            }
+            table {
+                width: 100%;
+                border-collapse: collapse;
+                margin-top: 20px;
+            }
+            th, td {
+                border: 1px solid #e2e8f0;
+                padding: 8px 12px;
+                text-align: left;
+                font-size: 10pt;
+            }
+            th {
+                background-color: #f8fafc !important;
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+            @page {
+                size: portrait;
+                margin: 0;
+            }
+        }
+
+        #report-print-area {
+            display: none;
+        }
+    </style>
+<script type="importmap">
+{
+  "imports": {
+    "react-dom/": "https://esm.sh/react-dom@^19.2.3/",
+    "react/": "https://esm.sh/react@^19.2.3/",
+    "react": "https://esm.sh/react@^19.2.3",
+    "@google/genai": "https://esm.sh/@google/genai@^1.35.0",
+    "recharts": "https://esm.sh/recharts@^3.6.0",
+    "firebase/app": "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js",
+    "firebase/firestore": "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js",
+    "firebase/": "https://esm.sh/firebase@^12.8.0/"
+  }
+}
+</script>
+<link rel="stylesheet" href="/index.css">
+</head>
+<body class="bg-slate-50 text-slate-900">
+    <div id="root"></div>
+<script type="module" src="/index.tsx"></script>
+</body>
+</html>
