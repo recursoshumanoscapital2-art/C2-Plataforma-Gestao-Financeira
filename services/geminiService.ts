@@ -2,7 +2,7 @@ import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
 import { Transaction, TransactionType, PaymentMethod, StatementResult } from "../types";
 
 // Inicializa o SDK com a variável que você configurou no Render
-const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
+const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY || "");
 
 export async function processStatement(fileBase64: string, mimeType: string): Promise<StatementResult> {
   
