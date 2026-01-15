@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import { Transaction, TransactionType } from './types';
 import { processStatement } from './services/geminiService';
 import Dashboard from './components/Dashboard';
@@ -130,7 +131,10 @@ const PrintLayout = ({ reportData, companyInfo, logoUrl, dateRange }: { reportDa
 
 
 const App: React.FC = () => {
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isAuthenticated, setIsAuthenticated] = useState(() => sessionStorage.getItem('isAuthenticated') === 'true');
+  const navigate = useNavigate();
+  const location = useLocation();
+
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isDataLoaded, setIsDataLoaded] = useState(false); 
@@ -162,7 +166,6 @@ const App: React.FC = () => {
 
   const [logoUrl, setLogoUrl] = useState<string | null>('https://media.licdn.com/dms/image/v2/D4D0BAQH41gxV57DnqA/company-logo_200_200/company-logo_200_200/0/1680527601049/capitaldois_logo?e=2147483647&v=beta&t=9uEFrm2sEUXOAXyDnUi1S9-8fNdK03YNshAFKdKr2hA');
   const [searchTerm, setSearchTerm] = useState('');
-  const [currentView, setCurrentView] = useState('dashboard');
   
   const [columnFilters, setColumnFilters] = useState<ColumnFilters>({
     date: '', ownerName: '', payingBank: '', type: '', origin: '', counterpartyName: '', amount: '', notes: ''
@@ -268,7 +271,7 @@ const App: React.FC = () => {
         }
         setTransactions(prev => [...addedTransactions, ...prev]);
       }
-      setCurrentView('dashboard');
+      navigate('/');
     } catch (err: any) { 
       setError(err.message); 
       console.error("Erro no processamento:", err);
@@ -277,7 +280,7 @@ const App: React.FC = () => {
       setIsLoading(false); 
       if (event.target) event.target.value = ''; 
     }
-  }, []);
+  }, [navigate]);
 
   const handleUpdateTransaction = useCallback(async (id: string, updates: Partial<Transaction>) => {
     try {
@@ -351,193 +354,11 @@ const App: React.FC = () => {
     }
     setReportDataForPrint({ title, data, type });
   };
-
-  const renderContent = () => {
-    if (currentView === 'dashboard') {
-      return (
-        <>
-          {transactions.length > 0 || isDataLoaded ? (
-            <>
-              <div className="flex flex-col lg:flex-row justify-between items-start gap-6 mb-8">
-                <div className="flex flex-col gap-1">
-                  <h2 className="text-2xl font-black text-slate-900">Gestor Financeiro</h2>
-                  <p className="text-sm text-slate-500 font-medium">Análise via Inteligência Artificial</p>
-                </div>
-                <div className="flex flex-col sm:flex-row items-end sm:items-center gap-4 w-full lg:w-auto">
-                  <div className="flex items-center gap-2 bg-white p-1.5 rounded-2xl border border-slate-100 shadow-sm">
-                    <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="text-[10px] font-black bg-indigo-50 text-indigo-700 rounded-lg px-2 py-1 outline-none" />
-                    <span className="text-[10px] text-slate-400 font-black">até</span>
-                    <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="text-[10px] font-black bg-indigo-50 text-indigo-700 rounded-lg px-2 py-1 outline-none" />
-                  </div>
-                  <select className="bg-white p-2 rounded-xl text-[10px] font-black border border-slate-100" value={selectedCnpj || ""} onChange={(e) => setSelectedCnpj(e.target.value || null)}>
-                    <option value="">Grupo Capital Dois</option>
-                    {uniqueCompanies.map(c => <option key={c.cnpj || c.id} value={c.cnpj}>{c.name}</option>)}
-                  </select>
-                </div>
-              </div>
-              <div className="space-y-10">
-                <Dashboard transactions={filteredTransactions} selectedCnpj={selectedCnpj} />
-                <TransactionTable transactions={filteredTransactions} allTransactions={transactions} onUpdateTransaction={handleUpdateTransaction} selectedCnpj={selectedCnpj} columnFilters={columnFilters} onColumnFilterChange={(f, v) => setColumnFilters(p => ({ ...p, [f]: v }))} />
-              </div>
-            </>
-          ) : (
-            <div className="text-center py-32 bg-white rounded-[3rem] border border-slate-100">
-              <h2 className="text-3xl font-black mb-10 text-slate-900">Bem-vindo ao C2 Gestao Financeira</h2>
-              <button onClick={() => setCurrentView('import')} className="bg-indigo-600 text-white font-black px-10 py-4 rounded-2xl text-sm uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100">Importar Extratos</button>
-            </div>
-          )}
-        </>
-      );
-    }
-    if (currentView === 'import') {
-      return (
-        <div className="max-w-4xl mx-auto">
-          <h2 className="text-2xl font-black mb-8">Importação de Extratos</h2>
-          {isLoading ? (
-            <div className="text-center py-20 bg-white rounded-[2rem] border border-slate-100 shadow-sm">
-              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
-              <p className="font-black text-indigo-600 mb-2">Processando...</p>
-            </div>
-          ) : (
-            <div className="text-center py-32 bg-white rounded-[3rem] border-2 border-dashed border-slate-200">
-              <label className="cursor-pointer bg-slate-900 text-white font-black px-10 py-4 rounded-2xl text-sm uppercase tracking-widest hover:bg-black transition-all">Escolher Arquivos<input type="file" className="hidden" accept="image/*,application/pdf" onChange={handleFileUpload} multiple /></label>
-            </div>
-          )}
-        </div>
-      );
-    }
-    if (currentView === 'companies') {
-      return (
-        <div className="bg-white p-12 rounded-[3rem] border border-slate-100">
-          <div className="flex justify-between items-center mb-12"><h2 className="text-2xl font-black">Empresas</h2><button onClick={() => setIsAddingCompany(true)} className="bg-indigo-600 text-white font-black px-6 py-3 rounded-xl text-xs uppercase">Cadastrar</button></div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {uniqueCompanies.map(c => {
-              const isEditing = editingCnpj === c.cnpj || editingCnpj === c.name;
-              return (
-              <div key={c.id} className="p-8 bg-slate-50 rounded-[2rem] border group hover:border-indigo-200 transition-all shadow-sm hover:shadow-md">
-                <div className="flex justify-between mb-4">
-                  <p className="text-[9px] font-black uppercase text-indigo-400">ID: {c.id?.substring(0, 8)}...</p>
-                  {isEditing ? (
-                    <div className="flex items-center gap-3">
-                      <button onClick={() => saveCompanyEdit(editingCnpj!)} className="text-[10px] font-black uppercase text-emerald-600 hover:text-emerald-800">Salvar</button>
-                      <button onClick={() => setEditingCnpj(null)} className="text-[10px] font-black uppercase text-slate-400 hover:text-slate-600">Cancelar</button>
-                    </div>
-                  ) : ( <button onClick={() => startEditCompany(c)} className="text-[10px] font-black uppercase text-slate-400 hover:text-indigo-600">Editar</button> )}
-                </div>
-                {isEditing ? (
-                  <div className="space-y-3">
-                    <input className="w-full border rounded-lg p-2 font-bold text-xs" value={editNameValue} onChange={e => setEditNameValue(e.target.value)} placeholder="Nome" />
-                    <input className="w-full border rounded-lg p-2 font-bold text-xs" value={editCnpjValue} onChange={e => setEditCnpjValue(e.target.value)} placeholder="CNPJ" />
-                    <textarea className="w-full border rounded-lg p-2 font-bold text-xs" value={editAltNameValue} onChange={e => setEditAltNameValue(e.target.value)} placeholder="Nomenclaturas" />
-                  </div>
-                ) : (
-                  <>
-                    <h3 className="font-black text-xl leading-tight text-slate-900">{c.name}</h3>
-                    <p className="text-xs text-slate-500 font-mono mt-2">{c.cnpj || 'N/A'}</p>
-                  </>
-                )}
-              </div>
-            )})}
-          </div>
-          {isAddingCompany && (
-            <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-[100]">
-              <div className="bg-white p-10 rounded-[2.5rem] w-full max-w-md shadow-2xl">
-                <h3 className="text-2xl font-black mb-6">Nova Empresa</h3>
-                <form onSubmit={handleAddCompany} className="space-y-4">
-                  <input required placeholder="Nome / Razão Principal" value={newCompanyName} onChange={e => setNewCompanyName(e.target.value)} className="w-full p-4 bg-slate-50 border rounded-xl font-bold text-sm" />
-                  <input placeholder="CNPJ" value={newCompanyCnpj} onChange={e => setNewCompanyCnpj(e.target.value)} className="w-full p-4 bg-slate-50 border rounded-xl font-bold text-sm" />
-                  <div className="flex gap-3 pt-6"><button type="submit" className="flex-1 bg-indigo-600 text-white py-4 rounded-xl font-black uppercase text-xs">Salvar</button><button type="button" onClick={() => setIsAddingCompany(false)} className="flex-1 bg-slate-100 py-4 rounded-xl font-black uppercase text-xs">Cancelar</button></div>
-                </form>
-              </div>
-            </div>
-          )}
-        </div>
-      );
-    }
-    if (currentView === 'users') {
-      return (
-        <div className="bg-white p-12 rounded-[3rem] border border-slate-100">
-          <div className="flex justify-between items-center mb-12">
-            <h2 className="text-2xl font-black">Usuários</h2>
-            <button onClick={() => setIsAddingUser(true)} className="bg-indigo-600 text-white font-black px-6 py-3 rounded-xl text-xs uppercase">Criar Usuário</button>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-left">
-              <thead>
-                <tr className="border-b border-slate-100">
-                  <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Login</th>
-                  <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Senha</th>
-                  <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">E-mail</th>
-                  <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Nível</th>
-                  <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Status</th>
-                  <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Ações</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-50">
-                {usersList.map(user => (
-                  <tr key={user.id} className="hover:bg-slate-50 transition-colors">
-                    <td className="px-6 py-4 font-bold text-slate-800">{user.login}</td>
-                    <td className="px-6 py-4 text-sm text-slate-600 font-mono">
-                      <div className="relative w-32">
-                          <span className="pr-8">
-                              {passwordVisibility[user.id!] ? user.password : '••••••••'}
-                          </span>
-                          <button
-                              type="button"
-                              onClick={() => togglePasswordVisibility(user.id!)}
-                              className="absolute right-0 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
-                          >
-                              {passwordVisibility[user.id!] ? (
-                                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l18 18" /></svg>
-                              ) : (
-                                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268-2.943-9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
-                              )}
-                          </button>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-slate-600">{user.email}</td>
-                    <td className="px-6 py-4 text-sm text-slate-600 capitalize">{user.role}</td>
-                    <td className="px-6 py-4">
-                      <span className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase inline-block border ${ user.active ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-slate-100 text-slate-500 border-slate-200' }`}>
-                        {user.active ? 'Ativo' : 'Inativo'}
-                      </span>
-                    </td>
-                    <td className="px-6 py-4">
-                      <button onClick={() => user.id && handleToggleUserStatus(user.id, user.active)} className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase transition-colors ${ user.active ? 'bg-rose-50 text-rose-600 hover:bg-rose-100' : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100' }`}>
-                        {user.active ? 'Inativar' : 'Ativar'}
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          {isAddingUser && (
-            <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-[100]">
-              <div className="bg-white p-10 rounded-[2.5rem] w-full max-w-md shadow-2xl">
-                <h3 className="text-2xl font-black mb-6">Novo Usuário</h3>
-                <form onSubmit={handleAddUser} className="space-y-4">
-                  <input required placeholder="Login" value={newUserLogin} onChange={e => setNewUserLogin(e.target.value)} className="w-full p-4 bg-slate-50 border rounded-xl font-bold text-sm" />
-                  <input required type="email" placeholder="E-mail" value={newUserEmail} onChange={e => setNewUserEmail(e.target.value)} className="w-full p-4 bg-slate-50 border rounded-xl font-bold text-sm" />
-                  <div className="relative">
-                    <input required type={showPassword ? "text" : "password"} placeholder="Senha" value={newUserPassword} onChange={e => setNewUserPassword(e.target.value)} className="w-full p-4 bg-slate-50 border rounded-xl font-bold text-sm pr-12" />
-                    <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-0 right-0 flex items-center px-4 text-slate-400 hover:text-slate-600">
-                      {showPassword ? ( <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l18 18" /></svg> ) : ( <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268-2.943-9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg> )}
-                    </button>
-                  </div>
-                  <select value={newUserRole} onChange={e => setNewUserRole(e.target.value as 'admin' | 'comum')} className="w-full p-4 bg-slate-50 border rounded-xl font-bold text-sm appearance-none">
-                    <option value="comum">Usuário Comum</option>
-                    <option value="admin">Admin</option>
-                  </select>
-                  <div className="flex gap-3 pt-6"><button type="submit" className="flex-1 bg-indigo-600 text-white py-4 rounded-xl font-black uppercase text-xs">Salvar</button><button type="button" onClick={() => { setIsAddingUser(false); setShowPassword(false); }} className="flex-1 bg-slate-100 py-4 rounded-xl font-black uppercase text-xs">Cancelar</button></div>
-                </form>
-              </div>
-            </div>
-          )}
-        </div>
-      );
-    }
-    return null;
+  
+  const handleLoginSuccess = () => {
+    sessionStorage.setItem('isAuthenticated', 'true');
+    setIsAuthenticated(true);
+    navigate('/');
   };
 
   const currentCompanyInfo = useMemo(() => {
@@ -547,20 +368,20 @@ const App: React.FC = () => {
   }, [filteredTransactions, selectedCnpj]);
 
   if (!isAuthenticated) {
-    return <Login onLoginSuccess={() => setIsAuthenticated(true)} />;
+    return <Login onLoginSuccess={handleLoginSuccess} />;
   }
 
   return (
     <>
       <div className="min-h-screen bg-slate-50 flex print-hidden">
-        <Sidebar currentView={currentView} onViewChange={setCurrentView} />
+        <Sidebar />
         <div className="flex-1 flex flex-col min-w-0">
           <header className="bg-white border-b border-slate-100 h-16 flex items-center px-6 sticky top-0 z-30 shadow-sm">
             <div className="flex-1">
-              {currentView === 'dashboard' && <input type="text" placeholder="Busca global..." className="w-64 p-2.5 bg-slate-50 border rounded-xl text-xs outline-none focus:border-indigo-400" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />}
+              {location.pathname === '/' && <input type="text" placeholder="Busca global..." className="w-64 p-2.5 bg-slate-50 border rounded-xl text-xs outline-none focus:border-indigo-400" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />}
             </div>
             <div className="flex items-center gap-3">
-              {currentView === 'dashboard' && transactions.length > 0 && (
+              {location.pathname === '/' && transactions.length > 0 && (
                 <>
                   <button 
                     onClick={() => setIsPdfModalOpen(true)}
@@ -585,7 +406,186 @@ const App: React.FC = () => {
               )}
             </div>
           </header>
-          <main className="flex-1 p-6 overflow-y-auto">{renderContent()}</main>
+          <main className="flex-1 p-6 overflow-y-auto">
+            <Routes>
+              <Route path="/" element={
+                <>
+                  {transactions.length > 0 || isDataLoaded ? (
+                    <>
+                      <div className="flex flex-col lg:flex-row justify-between items-start gap-6 mb-8">
+                        <div className="flex flex-col gap-1">
+                          <h2 className="text-2xl font-black text-slate-900">Gestor Financeiro</h2>
+                          <p className="text-sm text-slate-500 font-medium">Análise via Inteligência Artificial</p>
+                        </div>
+                        <div className="flex flex-col sm:flex-row items-end sm:items-center gap-4 w-full lg:w-auto">
+                          <div className="flex items-center gap-2 bg-white p-1.5 rounded-2xl border border-slate-100 shadow-sm">
+                            <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="text-[10px] font-black bg-indigo-50 text-indigo-700 rounded-lg px-2 py-1 outline-none" />
+                            <span className="text-[10px] text-slate-400 font-black">até</span>
+                            <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="text-[10px] font-black bg-indigo-50 text-indigo-700 rounded-lg px-2 py-1 outline-none" />
+                          </div>
+                          <select className="bg-white p-2 rounded-xl text-[10px] font-black border border-slate-100" value={selectedCnpj || ""} onChange={(e) => setSelectedCnpj(e.target.value || null)}>
+                            <option value="">Grupo Capital Dois</option>
+                            {uniqueCompanies.map(c => <option key={c.cnpj || c.id} value={c.cnpj}>{c.name}</option>)}
+                          </select>
+                        </div>
+                      </div>
+                      <div className="space-y-10">
+                        <Dashboard transactions={filteredTransactions} selectedCnpj={selectedCnpj} />
+                        <TransactionTable transactions={filteredTransactions} allTransactions={transactions} onUpdateTransaction={handleUpdateTransaction} selectedCnpj={selectedCnpj} columnFilters={columnFilters} onColumnFilterChange={(f, v) => setColumnFilters(p => ({ ...p, [f]: v }))} />
+                      </div>
+                    </>
+                  ) : (
+                    <div className="text-center py-32 bg-white rounded-[3rem] border border-slate-100">
+                      <h2 className="text-3xl font-black mb-10 text-slate-900">Bem-vindo ao C2 Gestao Financeira</h2>
+                      <button onClick={() => navigate('/import')} className="bg-indigo-600 text-white font-black px-10 py-4 rounded-2xl text-sm uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100">Importar Extratos</button>
+                    </div>
+                  )}
+                </>
+              } />
+              <Route path="/import" element={
+                <div className="max-w-4xl mx-auto">
+                  <h2 className="text-2xl font-black mb-8">Importação de Extratos</h2>
+                  {isLoading ? (
+                    <div className="text-center py-20 bg-white rounded-[2rem] border border-slate-100 shadow-sm">
+                      <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
+                      <p className="font-black text-indigo-600 mb-2">Processando...</p>
+                    </div>
+                  ) : (
+                    <div className="text-center py-32 bg-white rounded-[3rem] border-2 border-dashed border-slate-200">
+                      <label className="cursor-pointer bg-slate-900 text-white font-black px-10 py-4 rounded-2xl text-sm uppercase tracking-widest hover:bg-black transition-all">Escolher Arquivos<input type="file" className="hidden" accept="image/*,application/pdf" onChange={handleFileUpload} multiple /></label>
+                    </div>
+                  )}
+                </div>
+              } />
+              <Route path="/companies" element={
+                <div className="bg-white p-12 rounded-[3rem] border border-slate-100">
+                  <div className="flex justify-between items-center mb-12"><h2 className="text-2xl font-black">Empresas</h2><button onClick={() => setIsAddingCompany(true)} className="bg-indigo-600 text-white font-black px-6 py-3 rounded-xl text-xs uppercase">Cadastrar</button></div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {uniqueCompanies.map(c => {
+                      const isEditing = editingCnpj === c.cnpj || editingCnpj === c.name;
+                      return (
+                      <div key={c.id} className="p-8 bg-slate-50 rounded-[2rem] border group hover:border-indigo-200 transition-all shadow-sm hover:shadow-md">
+                        <div className="flex justify-between mb-4">
+                          <p className="text-[9px] font-black uppercase text-indigo-400">ID: {c.id?.substring(0, 8)}...</p>
+                          {isEditing ? (
+                            <div className="flex items-center gap-3">
+                              <button onClick={() => saveCompanyEdit(editingCnpj!)} className="text-[10px] font-black uppercase text-emerald-600 hover:text-emerald-800">Salvar</button>
+                              <button onClick={() => setEditingCnpj(null)} className="text-[10px] font-black uppercase text-slate-400 hover:text-slate-600">Cancelar</button>
+                            </div>
+                          ) : ( <button onClick={() => startEditCompany(c)} className="text-[10px] font-black uppercase text-slate-400 hover:text-indigo-600">Editar</button> )}
+                        </div>
+                        {isEditing ? (
+                          <div className="space-y-3">
+                            <input className="w-full border rounded-lg p-2 font-bold text-xs" value={editNameValue} onChange={e => setEditNameValue(e.target.value)} placeholder="Nome" />
+                            <input className="w-full border rounded-lg p-2 font-bold text-xs" value={editCnpjValue} onChange={e => setEditCnpjValue(e.target.value)} placeholder="CNPJ" />
+                            <textarea className="w-full border rounded-lg p-2 font-bold text-xs" value={editAltNameValue} onChange={e => setEditAltNameValue(e.target.value)} placeholder="Nomenclaturas" />
+                          </div>
+                        ) : (
+                          <>
+                            <h3 className="font-black text-xl leading-tight text-slate-900">{c.name}</h3>
+                            <p className="text-xs text-slate-500 font-mono mt-2">{c.cnpj || 'N/A'}</p>
+                          </>
+                        )}
+                      </div>
+                    )})}
+                  </div>
+                  {isAddingCompany && (
+                    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-[100]">
+                      <div className="bg-white p-10 rounded-[2.5rem] w-full max-w-md shadow-2xl">
+                        <h3 className="text-2xl font-black mb-6">Nova Empresa</h3>
+                        <form onSubmit={handleAddCompany} className="space-y-4">
+                          <input required placeholder="Nome / Razão Principal" value={newCompanyName} onChange={e => setNewCompanyName(e.target.value)} className="w-full p-4 bg-slate-50 border rounded-xl font-bold text-sm" />
+                          <input placeholder="CNPJ" value={newCompanyCnpj} onChange={e => setNewCompanyCnpj(e.target.value)} className="w-full p-4 bg-slate-50 border rounded-xl font-bold text-sm" />
+                          <div className="flex gap-3 pt-6"><button type="submit" className="flex-1 bg-indigo-600 text-white py-4 rounded-xl font-black uppercase text-xs">Salvar</button><button type="button" onClick={() => setIsAddingCompany(false)} className="flex-1 bg-slate-100 py-4 rounded-xl font-black uppercase text-xs">Cancelar</button></div>
+                        </form>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              } />
+              <Route path="/users" element={
+                <div className="bg-white p-12 rounded-[3rem] border border-slate-100">
+                  <div className="flex justify-between items-center mb-12">
+                    <h2 className="text-2xl font-black">Usuários</h2>
+                    <button onClick={() => setIsAddingUser(true)} className="bg-indigo-600 text-white font-black px-6 py-3 rounded-xl text-xs uppercase">Criar Usuário</button>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left">
+                      <thead>
+                        <tr className="border-b border-slate-100">
+                          <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Login</th>
+                          <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Senha</th>
+                          <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">E-mail</th>
+                          <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Nível</th>
+                          <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Status</th>
+                          <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Ações</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-50">
+                        {usersList.map(user => (
+                          <tr key={user.id} className="hover:bg-slate-50 transition-colors">
+                            <td className="px-6 py-4 font-bold text-slate-800">{user.login}</td>
+                            <td className="px-6 py-4 text-sm text-slate-600 font-mono">
+                              <div className="relative w-32">
+                                  <span className="pr-8">
+                                      {passwordVisibility[user.id!] ? user.password : '••••••••'}
+                                  </span>
+                                  <button
+                                      type="button"
+                                      onClick={() => togglePasswordVisibility(user.id!)}
+                                      className="absolute right-0 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                                  >
+                                      {passwordVisibility[user.id!] ? (
+                                          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l18 18" /></svg>
+                                      ) : (
+                                          <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268-2.943-9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                                      )}
+                                  </button>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 text-sm text-slate-600">{user.email}</td>
+                            <td className="px-6 py-4 text-sm text-slate-600 capitalize">{user.role}</td>
+                            <td className="px-6 py-4">
+                              <span className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase inline-block border ${ user.active ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-slate-100 text-slate-500 border-slate-200' }`}>
+                                {user.active ? 'Ativo' : 'Inativo'}
+                              </span>
+                            </td>
+                            <td className="px-6 py-4">
+                              <button onClick={() => user.id && handleToggleUserStatus(user.id, user.active)} className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase transition-colors ${ user.active ? 'bg-rose-50 text-rose-600 hover:bg-rose-100' : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100' }`}>
+                                {user.active ? 'Inativar' : 'Ativar'}
+                              </button>
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  {isAddingUser && (
+                    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-[100]">
+                      <div className="bg-white p-10 rounded-[2.5rem] w-full max-w-md shadow-2xl">
+                        <h3 className="text-2xl font-black mb-6">Novo Usuário</h3>
+                        <form onSubmit={handleAddUser} className="space-y-4">
+                          <input required placeholder="Login" value={newUserLogin} onChange={e => setNewUserLogin(e.target.value)} className="w-full p-4 bg-slate-50 border rounded-xl font-bold text-sm" />
+                          <input required type="email" placeholder="E-mail" value={newUserEmail} onChange={e => setNewUserEmail(e.target.value)} className="w-full p-4 bg-slate-50 border rounded-xl font-bold text-sm" />
+                          <div className="relative">
+                            <input required type={showPassword ? "text" : "password"} placeholder="Senha" value={newUserPassword} onChange={e => setNewUserPassword(e.target.value)} className="w-full p-4 bg-slate-50 border rounded-xl font-bold text-sm pr-12" />
+                            <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-0 right-0 flex items-center px-4 text-slate-400 hover:text-slate-600">
+                              {showPassword ? ( <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l18 18" /></svg> ) : ( <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268-2.943-9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg> )}
+                            </button>
+                          </div>
+                          <select value={newUserRole} onChange={e => setNewUserRole(e.target.value as 'admin' | 'comum')} className="w-full p-4 bg-slate-50 border rounded-xl font-bold text-sm appearance-none">
+                            <option value="comum">Usuário Comum</option>
+                            <option value="admin">Admin</option>
+                          </select>
+                          <div className="flex gap-3 pt-6"><button type="submit" className="flex-1 bg-indigo-600 text-white py-4 rounded-xl font-black uppercase text-xs">Salvar</button><button type="button" onClick={() => { setIsAddingUser(false); setShowPassword(false); }} className="flex-1 bg-slate-100 py-4 rounded-xl font-black uppercase text-xs">Cancelar</button></div>
+                        </form>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              } />
+            </Routes>
+          </main>
         </div>
 
         {isPdfModalOpen && (
