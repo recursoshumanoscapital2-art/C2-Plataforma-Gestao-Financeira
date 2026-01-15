@@ -1,4 +1,3 @@
-
 // Use the recommended import syntax for GoogleGenAI and Type
 import { GoogleGenAI, Type } from "@google/genai";
 import { Transaction, TransactionType, PaymentMethod, StatementResult } from "../types";
@@ -7,7 +6,7 @@ export async function processStatement(fileBase64: string, mimeType: string): Pr
   // FIX: Per coding guidelines, the API key must be obtained from process.env.API_KEY.
   const apiKey = process.env.API_KEY;
   if (!apiKey) {
-    throw new Error("A variável de ambiente API_KEY não está configurada no seu ambiente de hospedagem (Render).");
+    throw new Error("A variável de ambiente VITE_API_KEY não está configurada no seu ambiente de hospedagem (Render). Por favor, defina a variável 'VITE_API_KEY' nas configurações do seu serviço no Render.");
   }
   
   // Initialize GoogleGenAI with the key from the environment
