@@ -31,7 +31,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange }) => {
   ];
 
   return (
-    <aside className="w-72 bg-white border-r border-slate-100 flex flex-col h-screen sticky top-0 z-40">
+    <aside className="w-72 bg-white border-r border-slate-100 flex flex-col h-screen sticky top-0 z-40 print-hidden">
       <div className="p-8">
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-100">
