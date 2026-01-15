@@ -1,5 +1,4 @@
-
-import React, { useMemo, useRef } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer
 } from 'recharts';
@@ -16,7 +15,6 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, selectedCnpj, logoU
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const currentOwner = useMemo(() => {
-    // Se não houver transações filtradas, mantém o nome do grupo padrão
     if (!selectedCnpj || transactions.length === 0) {
       return { name: 'Grupo Capital Dois', cnpj: 'Múltiplas Empresas', bank: 'Vários' };
     }
@@ -77,7 +75,9 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, selectedCnpj, logoU
       <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 lg:col-span-1 flex flex-col justify-between">
         <div>
           <div className="flex justify-between items-start mb-6">
-            <h3 className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">Saúde Financeira</h3>
+            <div className="flex-1">
+              <h3 className="text-slate-500 text-[10px] font-bold uppercase tracking-widest">Saúde Financeira</h3>
+            </div>
             
             <div 
               onClick={handleLogoClick}
@@ -103,7 +103,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, selectedCnpj, logoU
             </div>
           </div>
 
-          <div className="mb-6">
+          <div className="mb-6 mt-6">
             <p className="text-slate-900 font-extrabold text-xl truncate" title={currentOwner.name}>{currentOwner.name}</p>
             <div className="flex justify-between items-center mt-2">
               <p className="text-slate-400 text-xs font-mono tracking-tight">{currentOwner.cnpj}</p>
