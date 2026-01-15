@@ -2,6 +2,7 @@
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { Transaction, TransactionType } from './types';
 import { processStatement } from './services/geminiService';
+import { parsePDFLocally } from './services/pdfParserService';
 import Dashboard from './components/Dashboard';
 import TransactionTable from './components/TransactionTable';
 import Sidebar from './components/Sidebar';
@@ -47,7 +48,7 @@ interface UserInfo {
 const App: React.FC = () => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [isDataLoaded, setIsDataLoaded] = useState(false); // Flag crítica para evitar duplicidade no carregamento
+  const [isDataLoaded, setIsDataLoaded] = useState(false); 
   const [elapsedTime, setElapsedTime] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [selectedCnpj, setSelectedCnpj] = useState<string | null>(null);
@@ -128,7 +129,7 @@ const App: React.FC = () => {
         const usersListData = usersSnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })) as UserInfo[];
         setUsersList(usersListData);
         
-        setIsDataLoaded(true); // Marca que o carregamento inicial terminou com sucesso
+        setIsDataLoaded(true); 
       } catch (err) {
         console.error("Erro ao carregar dados do Firebase:", err);
       } finally {
@@ -138,7 +139,6 @@ const App: React.FC = () => {
     fetchData();
   }, []);
 
-  // Sincronização robusta: Só roda se isDataLoaded for true
   useEffect(() => {
     const syncCompanies = async () => {
       if (!isDataLoaded || transactions.length === 0) return;
@@ -153,8 +153,8 @@ const App: React.FC = () => {
       const namesAddedInThisBatch = new Set<string>();
       
       transactions.forEach(t => {
-        const nameLower = t.ownerName.trim().toLowerCase();
-        if (!allKnownNames.has(nameLower) && !namesAddedInThisBatch.has(nameLower)) {
+        const nameLower = t.ownerName?.trim().toLowerCase();
+        if (nameLower && !allKnownNames.has(nameLower) && !namesAddedInThisBatch.has(nameLower)) {
           newCompaniesToAdd.push({ 
             name: t.ownerName.trim(), 
             cnpj: (t.ownerCnpj || '').trim(), 
@@ -177,12 +177,13 @@ const App: React.FC = () => {
       }
     };
     syncCompanies();
-  }, [isDataLoaded, transactions, registeredCompanies.length]); // registeredCompanies.length como dependência segura
+  }, [isDataLoaded, transactions, registeredCompanies.length]); 
 
   const filteredTransactions = useMemo(() => {
     let result = [...transactions];
     if (selectedCnpj) result = result.filter(t => t.ownerCnpj === selectedCnpj);
     result = result.filter(t => {
+      if (!t.date) return true; 
       const tDatePart = t.date.split('T')[0];
       if (startDate && tDatePart < startDate) return false;
       if (endDate && tDatePart > endDate) return false;
@@ -191,11 +192,11 @@ const App: React.FC = () => {
     if (searchTerm.trim()) {
       const term = searchTerm.toLowerCase();
       result = result.filter(t => 
-        t.counterpartyName.toLowerCase().includes(term) ||
-        t.payingBank.toLowerCase().includes(term) ||
-        t.amount.toString().includes(term) ||
-        t.ownerName.toLowerCase().includes(term) ||
-        t.description.toLowerCase().includes(term) ||
+        (t.counterpartyName || '').toLowerCase().includes(term) ||
+        (t.payingBank || '').toLowerCase().includes(term) ||
+        (t.amount || 0).toString().includes(term) ||
+        (t.ownerName || '').toLowerCase().includes(term) ||
+        (t.description || '').toLowerCase().includes(term) ||
         (t.notes && t.notes.toLowerCase().includes(term))
       );
     }
@@ -204,14 +205,18 @@ const App: React.FC = () => {
       if (filterValue) {
         const value = filterValue.toLowerCase();
         result = result.filter(t => {
-          if (key === 'amount') return t.amount.toString().includes(value);
-          if (key === 'date') return t.date.split('T')[0].includes(value);
+          if (key === 'amount') return (t.amount || 0).toString().includes(value);
+          if (key === 'date') return t.date ? t.date.split('T')[0].includes(value) : false;
           const tValue = String(t[key as keyof Transaction] || '').toLowerCase();
           return tValue.includes(value);
         });
       }
     });
-    return result.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    return result.sort((a, b) => {
+      const dateA = a.date ? new Date(a.date).getTime() : 0;
+      const dateB = b.date ? new Date(b.date).getTime() : 0;
+      return dateB - dateA;
+    });
   }, [transactions, selectedCnpj, startDate, endDate, searchTerm, columnFilters]);
 
   const handleFileUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -220,37 +225,51 @@ const App: React.FC = () => {
     setIsLoading(true);
     setError(null);
     const fileList = Array.from(files) as File[];
+    
     try {
       let currentTransactions = [...transactions];
       for (const file of fileList) {
-        await new Promise<void>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = async (e) => {
-            const base64 = e.target?.result?.toString().split(',')[1];
-            if (base64) {
-              try {
-                const result = await processStatement(base64, file.type);
-                const isDuplicated = result.transactions.length > 0 && result.transactions.every(newT => 
-                  currentTransactions.some(existingT => 
-                    existingT.date === newT.date && existingT.amount === newT.amount
-                  )
-                );
-                if (isDuplicated) { alert(`Arquivo '${file.name}' duplicado.`); resolve(); return; }
-                const addedTransactions: Transaction[] = [];
-                for (const t of result.transactions) {
-                  const docRef = await addDoc(collection(db, "transactions"), t);
-                  addedTransactions.push({ ...t, id: docRef.id });
-                }
-                setTransactions(prev => [...addedTransactions, ...prev]);
-                resolve();
-              } catch (err: any) { reject(err); }
-            } else reject(new Error("Erro ao ler arquivo"));
-          };
-          reader.readAsDataURL(file);
-        });
+        let result;
+        
+        if (file.type === 'application/pdf') {
+          // IMPORTAÇÃO SEM IA (Local)
+          result = await parsePDFLocally(file);
+        } else {
+          // IMPORTAÇÃO COM IA (Imagens/Outros)
+          const base64 = await new Promise<string>((resolve) => {
+            const reader = new FileReader();
+            reader.onload = (e) => resolve(e.target?.result?.toString().split(',')[1] || "");
+            reader.readAsDataURL(file);
+          });
+          result = await processStatement(base64, file.type);
+        }
+
+        const isDuplicated = result.transactions.length > 0 && result.transactions.every(newT => 
+          currentTransactions.some(existingT => 
+            existingT.date === newT.date && existingT.amount === newT.amount
+          )
+        );
+        
+        if (isDuplicated) { 
+          alert(`Arquivo '${file.name}' já foi importado anteriormente.`); 
+          continue; 
+        }
+
+        const addedTransactions: Transaction[] = [];
+        for (const t of result.transactions) {
+          const docRef = await addDoc(collection(db, "transactions"), t);
+          addedTransactions.push({ ...t, id: docRef.id });
+        }
+        setTransactions(prev => [...addedTransactions, ...prev]);
       }
       setCurrentView('dashboard');
-    } catch (err: any) { setError(err.message); } finally { setIsLoading(false); if (event.target) event.target.value = ''; }
+    } catch (err: any) { 
+      setError(err.message); 
+      console.error("Erro no processamento:", err);
+    } finally { 
+      setIsLoading(false); 
+      if (event.target) event.target.value = ''; 
+    }
   }, [transactions]);
 
   const handleUpdateTransaction = useCallback(async (id: string, updates: Partial<Transaction>) => {
@@ -436,8 +455,8 @@ const App: React.FC = () => {
           {isLoading ? (
             <div className="text-center py-20 bg-white rounded-[2rem] border border-slate-100 shadow-sm">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
-              <p className="font-black text-indigo-600 mb-2">Processando extratos com IA...</p>
-              <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">Tempo decorrido: {elapsedTime}s</p>
+              <p className="font-black text-indigo-600 mb-2">Processando extratos localmente...</p>
+              <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">Aguarde a leitura do arquivo</p>
             </div>
           ) : (
             <div className="text-center py-32 bg-white rounded-[3rem] border-2 border-dashed border-slate-200">
@@ -504,44 +523,6 @@ const App: React.FC = () => {
               </div>
             </div>
           )}
-        </div>
-      );
-    }
-    if (currentView === 'users') {
-      return (
-        <div className="bg-white p-12 rounded-[3rem] border border-slate-100 print-hidden">
-          <div className="flex justify-between items-center mb-12">
-            <h2 className="text-2xl font-black">Usuários</h2>
-            <button onClick={() => setIsAddingUser(true)} className="bg-indigo-600 text-white font-black px-6 py-3 rounded-xl text-xs uppercase shadow-lg shadow-indigo-100 active:scale-95 transition-all">Cadastrar Usuário</button>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {usersList.map(u => (
-              <div key={u.id} className={`p-8 rounded-[2rem] border group transition-all shadow-sm ${u.active ? 'bg-slate-50 border-slate-100' : 'bg-slate-100 border-slate-200 opacity-60'}`}>
-                <div className="flex justify-between mb-4">
-                  <p className="text-[9px] font-black uppercase text-indigo-400">ID: {u.userId}</p>
-                  <div className="flex gap-2">
-                    <button onClick={() => setEditingUser(u)} className="text-[10px] font-black uppercase text-slate-400 hover:text-indigo-600">Editar</button>
-                    <button onClick={() => handleToggleUserStatus(u)} className={`text-[10px] font-black uppercase ${u.active ? 'text-rose-500 hover:text-rose-600' : 'text-emerald-500 hover:text-emerald-600'}`}>
-                      {u.active ? 'Desativar' : 'Ativar'}
-                    </button>
-                  </div>
-                </div>
-                <div className="flex items-center gap-4 mb-4">
-                  <div className={`w-12 h-12 rounded-full flex items-center justify-center font-black text-sm ${u.active ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-200 text-slate-400'}`}>
-                    {u.login.substring(0, 2).toUpperCase()}
-                  </div>
-                  <div className="min-w-0">
-                    <h3 className="font-black text-lg text-slate-900 truncate">{u.login}</h3>
-                    <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded inline-block ${u.role === 'admin' ? 'bg-indigo-600 text-white' : 'bg-slate-300 text-slate-700'}`}>{u.role}</span>
-                  </div>
-                </div>
-                <div className="pt-4 border-t border-slate-100">
-                  <p className="text-[9px] font-black text-slate-400 uppercase mb-1">E-mail</p>
-                  <p className="text-xs text-slate-700 font-bold truncate">{u.email}</p>
-                </div>
-              </div>
-            ))}
-          </div>
         </div>
       );
     }
