@@ -240,16 +240,6 @@ const App: React.FC = () => {
     } catch (err) { console.error(err); }
   }, []);
 
-  const handleTriggerDeploy = async () => {
-    if (confirm("Deseja iniciar um novo deploy no Render?")) {
-      setIsLoading(true);
-      try {
-        await fetch("https://api.render.com/deploy/srv-d5k450fpm1nc73fqfn40?key=aaAYJonr_ic", { method: 'POST', mode: 'no-cors' });
-        alert("Deploy iniciado!");
-      } catch (err) { alert("Erro ao conectar com o Render."); } finally { setIsLoading(false); }
-    }
-  };
-
   const generateReport = (type: 'all' | TransactionType) => {
     setPdfReportType(type);
     setIsPdfModalOpen(false);
@@ -518,8 +508,27 @@ const App: React.FC = () => {
                 <button onClick={() => setIsPdfModalOpen(true)} className="bg-white hover:bg-slate-50 border px-4 py-2 rounded-xl text-sm font-bold text-slate-600 flex items-center gap-2 transition-all">
                   <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg> PDF
                 </button>
-                <button onClick={handleTriggerDeploy} className="bg-slate-900 hover:bg-black text-white px-5 py-2 rounded-xl text-sm font-bold shadow-lg shadow-slate-200 transition-all active:scale-95 flex items-center gap-2">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" /></svg> Deploy
+                <button 
+                  onClick={async () => {
+                    if (confirm("Deseja finalizar o dia e salvar os totais?")) {
+                      const summary = filteredTransactions.reduce((acc, t) => {
+                        if (t.type === TransactionType.INFLOW) acc.totalInflow += t.amount;
+                        else acc.totalOutflow += t.amount;
+                        return acc;
+                      }, { totalInflow: 0, totalOutflow: 0 });
+                      await addDoc(collection(db, "Dashboard"), { 
+                        timestamp: new Date().toISOString(), 
+                        entradas: summary.totalInflow, 
+                        saidas: summary.totalOutflow, 
+                        saldo: summary.totalInflow - summary.totalOutflow,
+                        empresa: selectedCnpj ? transactions.find(t => t.ownerCnpj === selectedCnpj)?.ownerName : "Grupo Capital Dois"
+                      });
+                      alert("Resumo do dia salvo com sucesso!");
+                    }
+                  }} 
+                  className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-xl text-sm font-bold shadow-lg shadow-indigo-100 flex items-center gap-2 transition-all active:scale-95"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg> Finalizar Dia
                 </button>
               </>
             )}
