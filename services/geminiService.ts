@@ -1,108 +1,96 @@
-
-// Use the recommended import syntax for GoogleGenAI and Type
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
 import { Transaction, TransactionType, PaymentMethod, StatementResult } from "../types";
 
-export async function processStatement(fileBase64: string, mimeType: string): Promise<StatementResult> {
-  // Always initialize GoogleGenAI with a named parameter
-  // Fixed spacing to strictly match guideline: { apiKey: process.env.API_KEY }
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+// Inicializa o SDK com a variável que você configurou no Render
+const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 
-  // Utilizando o modelo gemini-3-pro-preview para análise de alta precisão em extratos bancários (Complex Text Task)
-  const response = await ai.models.generateContent({
-    model: 'gemini-3-pro-preview',
-    contents: {
-      parts: [
-        {
-          inlineData: {
-            data: fileBase64,
-            mimeType: mimeType
-          }
-        },
-        {
-          text: "Analise o extrato bancário (PDF ou Imagem) e extraia os dados para o formato JSON solicitado. Foque na precisão absoluta dos valores e datas."
-        }
-      ]
-    },
-    config: {
-      // Adding thinkingBudget to leverage Gemini 3 Pro reasoning capabilities for complex bank parsing
-      thinkingConfig: { thinkingBudget: 32768 },
-      systemInstruction: `Você é um especialista em contabilidade e análise bancária brasileira.
-          Sua tarefa é converter extratos bancários em dados estruturados com precisão absoluta.
-          
-          REGRAS CRÍTICAS PARA O PROPRIETÁRIO (OWNER):
-          1. ownerName: Identifique a Razão Social ou Nome do Titular da conta.
-          2. ownerCnpj: EXTRAIA O CNPJ APENAS se houver explicitamente a nomenclatura 'CNPJ' seguida de números no documento. Se não encontrar o termo 'CNPJ' explicitamente, deixe este campo vazio ("").
-          3. ownerBank: Identifique o banco emissor.
-          
-          REGRAS PARA TRANSAÇÕES:
-          - Identifique cada linha de movimentação.
-          - date: Formato ISO 8601 (YYYY-MM-DDTHH:mm:ss).
-          - amount: Valor numérico positivo.
-          - type: "entrada" para créditos/depósitos, "saída" para débitos/pagamentos/tarifas.
-          - paymentMethod: Classifique em PIX, TED, BOLETO, CARTÃO ou OUTROS.
-          - origin: Descreva a natureza (ex: Venda, Tarifa, Transferência).
-          - counterpartyName: Nome de quem recebeu ou enviou o dinheiro.`,
+export async function processStatement(fileBase64: string, mimeType: string): Promise<StatementResult> {
+  
+  // Seleciona o modelo (1.5-flash é excelente para JSON e extratos)
+  const model = genAI.getGenerativeModel({
+    model: "gemini-3-flash-preview",
+    generationConfig: {
       responseMimeType: "application/json",
+      // Definindo o esquema para garantir que a IA não invente campos
       responseSchema: {
-        type: Type.OBJECT,
+        type: SchemaType.OBJECT,
         properties: {
-          ownerName: { type: Type.STRING },
-          ownerCnpj: { type: Type.STRING },
-          ownerBank: { type: Type.STRING },
+          ownerName: { type: SchemaType.STRING },
+          ownerCnpj: { type: SchemaType.STRING },
+          ownerBank: { type: SchemaType.STRING },
           transactions: {
-            type: Type.ARRAY,
+            type: SchemaType.ARRAY,
             items: {
-              type: Type.OBJECT,
+              type: SchemaType.OBJECT,
               properties: {
-                date: { type: Type.STRING },
-                description: { type: Type.STRING },
-                amount: { type: Type.NUMBER },
-                type: { type: Type.STRING },
-                counterpartyName: { type: Type.STRING },
-                counterpartyCnpj: { type: Type.STRING },
-                paymentMethod: { type: Type.STRING },
-                payerName: { type: Type.STRING },
-                origin: { type: Type.STRING },
-                payingBank: { type: Type.STRING }
+                date: { type: SchemaType.STRING },
+                description: { type: SchemaType.STRING },
+                amount: { type: SchemaType.NUMBER },
+                type: { type: SchemaType.STRING },
+                counterpartyName: { type: SchemaType.STRING },
+                paymentMethod: { type: SchemaType.STRING },
+                origin: { type: SchemaType.STRING },
+                payingBank: { type: SchemaType.STRING }
               },
-              required: ['date', 'amount', 'type', 'description']
+              required: ["date", "amount", "type", "description"]
             }
           }
         },
-        required: ['ownerName', 'ownerCnpj', 'ownerBank', 'transactions']
+        required: ["ownerName", "ownerCnpj", "ownerBank", "transactions"]
       }
-    }
+    },
+    systemInstruction: `Você é um especialista em contabilidade brasileira. 
+    Sua tarefa é converter extratos bancários em JSON puro.
+    REGRAS:
+    1. amount: Sempre número positivo.
+    2. type: Use apenas "entrada" ou "saída".
+    3. date: Formato YYYY-MM-DD.
+    4. Se não encontrar CNPJ, retorne "".`
   });
 
-  // response.text is a getter property, safely access it without method call
-  const jsonStr = response.text?.trim() ?? "{}";
-  const rawData = JSON.parse(jsonStr);
-  
-  const ownerName = rawData.ownerName || 'Empresa não identificada';
-  const ownerCnpj = rawData.ownerCnpj || '';
-  const ownerBank = rawData.ownerBank || 'Banco não identificado';
-  
-  return {
-    ownerName,
-    ownerCnpj,
-    ownerBank,
-    transactions: (rawData.transactions || []).map((item: any, index: number) => ({
-      id: `${Date.now()}-${index}-${Math.random().toString(36).substr(2, 9)}`,
-      date: item.date || new Date().toISOString(),
-      description: item.description || 'Sem descrição',
-      amount: item.amount || 0,
-      type: item.type === 'entrada' ? TransactionType.INFLOW : TransactionType.OUTFLOW,
-      counterpartyName: item.counterpartyName || 'Não identificado',
-      counterpartyCnpj: item.counterpartyCnpj || '',
-      paymentMethod: (item.paymentMethod as PaymentMethod) || PaymentMethod.OUTROS,
-      payerName: item.type === 'saída' ? ownerName : (item.counterpartyName || 'Terceiro'),
-      origin: item.origin || 'Extração IA',
-      payingBank: item.payingBank || ownerBank,
-      notes: '', 
+  const prompt = "Analise o extrato bancário anexo e extraia todos os dados solicitados no formato JSON.";
+
+  try {
+    const result = await model.generateContent([
+      {
+        inlineData: {
+          mimeType: mimeType,
+          data: fileBase64
+        }
+      },
+      { text: prompt }
+    ]);
+
+    const response = await result.response;
+    const rawData = JSON.parse(response.text());
+
+    const ownerName = rawData.ownerName || 'Não identificado';
+    const ownerBank = rawData.ownerBank || 'Não identificado';
+
+    // Mapeia os dados da IA para o formato da sua aplicação
+    return {
       ownerName,
-      ownerCnpj,
-      ownerBank
-    }))
-  };
+      ownerCnpj: rawData.ownerCnpj || '',
+      ownerBank,
+      transactions: (rawData.transactions || []).map((item: any, index: number) => ({
+        id: `${Date.now()}-${index}-${Math.random().toString(36).substring(2, 9)}`,
+        date: item.date || new Date().toISOString(),
+        description: item.description || 'Sem descrição',
+        amount: item.amount || 0,
+        type: item.type === 'entrada' ? TransactionType.INFLOW : TransactionType.OUTFLOW,
+        counterpartyName: item.counterpartyName || 'Não identificado',
+        paymentMethod: (item.paymentMethod as PaymentMethod) || PaymentMethod.OUTROS,
+        payerName: item.type === 'saída' ? ownerName : (item.counterpartyName || 'Terceiro'),
+        origin: item.origin || 'Extração IA',
+        payingBank: item.payingBank || ownerBank,
+        notes: '',
+        ownerName,
+        ownerCnpj: rawData.ownerCnpj || '',
+        ownerBank
+      }))
+    };
+  } catch (error) {
+    console.error("Erro no processamento Gemini:", error);
+    throw new Error("Falha ao processar o extrato com Gemini.");
+  }
 }
