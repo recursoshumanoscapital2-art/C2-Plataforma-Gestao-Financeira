@@ -1,4 +1,3 @@
-
 // Standard modular Firebase v9+ imports
 import { initializeApp } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
