@@ -1,6 +1,4 @@
-
 // Standard modular Firebase v9+ initialization
-// Re-importing to ensure correct resolution of initializeApp from the modular SDK
 import { initializeApp } from 'firebase/app';
 import { getFirestore } from 'firebase/firestore';
 
@@ -15,5 +13,6 @@ const firebaseConfig = {
 
 // Initialize Firebase app instance
 const app = initializeApp(firebaseConfig);
+
 // Export Firestore database instance
 export const db = getFirestore(app);
