@@ -1,12 +1,12 @@
 import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
-import { Transaction, TransactionType, PaymentMethod, StatementResult } from "../types";
+import { TransactionType, PaymentMethod, StatementResult } from "../types";
 
-// Usamos (import.meta as any) para evitar que o TypeScript reclame durante o build
-const apiKey = (import.meta as any).env.VITE_GEMINI_API_KEY || "";
-const genAI = new GoogleGenerativeAI(apiKey);
+// Pegando a chave com o prefixo VITE_ (obrigatório no Vite)
+// @ts-ignore - Ignora erro de tipagem do import.meta no build
+const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";
+const genAI = new GoogleGenerativeAI(API_KEY);
 
 export async function processStatement(fileBase64: string, mimeType: string): Promise<StatementResult> {
-  
   const model = genAI.getGenerativeModel({
     model: "gemini-1.5-flash",
     generationConfig: {
@@ -37,14 +37,13 @@ export async function processStatement(fileBase64: string, mimeType: string): Pr
         },
         required: ["ownerName", "ownerCnpj", "ownerBank", "transactions"]
       }
-    },
-    systemInstruction: `Você é um especialista em contabilidade brasileira. Extraia os dados do extrato para JSON.`
+    }
   });
 
   try {
     const result = await model.generateContent([
-      { inlineData: { mimeType: mimeType, data: fileBase64 } },
-      { text: "Extraia os dados deste extrato bancário." }
+      { inlineData: { mimeType, data: fileBase64 } },
+      { text: "Extraia os dados deste extrato bancário para o formato JSON solicitado." }
     ]);
 
     const response = await result.response;
@@ -61,7 +60,7 @@ export async function processStatement(fileBase64: string, mimeType: string): Pr
         id: `${Date.now()}-${index}`,
         date: item.date || new Date().toISOString(),
         description: item.description || 'Sem descrição',
-        amount: item.amount || 0,
+        amount: Math.abs(item.amount || 0),
         type: item.type === 'entrada' ? TransactionType.INFLOW : TransactionType.OUTFLOW,
         counterpartyName: item.counterpartyName || 'Não identificado',
         paymentMethod: (item.paymentMethod as PaymentMethod) || PaymentMethod.OUTROS,
@@ -75,7 +74,7 @@ export async function processStatement(fileBase64: string, mimeType: string): Pr
       }))
     };
   } catch (error) {
-    console.error("Erro Gemini:", error);
+    console.error("Erro no GeminiService:", error);
     throw error;
   }
 }
