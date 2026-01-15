@@ -30,16 +30,15 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
 
       if (querySnapshot.empty) {
         setError('Usuário ou senha inválidos, ou o usuário está inativo.');
-        setIsLoading(false);
-        return;
+      } else {
+        onLoginSuccess();
       }
-      
-      // Se encontrou pelo menos um, o login é bem-sucedido
-      onLoginSuccess();
-
     } catch (err) {
       console.error("Erro ao autenticar:", err);
       setError('Ocorreu um erro ao tentar fazer login. Tente novamente.');
+    } finally {
+      // Limpa a senha da memória do componente por segurança, após a tentativa.
+      setPassword('');
       setIsLoading(false);
     }
   };
