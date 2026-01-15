@@ -377,6 +377,22 @@ const App: React.FC = () => {
 
   const reportTransactions = useMemo(() => pdfReportType === 'all' ? filteredTransactions : filteredTransactions.filter(t => t.type === pdfReportType), [filteredTransactions, pdfReportType]);
 
+  const reportSummary = useMemo(() => {
+    return reportTransactions.reduce((acc, t) => {
+      if (t.type === TransactionType.INFLOW) acc.inflow += t.amount;
+      else acc.outflow += t.amount;
+      return acc;
+    }, { inflow: 0, outflow: 0 });
+  }, [reportTransactions]);
+
+  const currentOwnerForPdf = useMemo(() => {
+    if (selectedCnpj && transactions.length > 0) {
+      const found = transactions.find(t => t.ownerCnpj === selectedCnpj);
+      return found ? { name: found.ownerName, cnpj: found.ownerCnpj } : { name: 'Grupo Capital Dois', cnpj: '' };
+    }
+    return { name: 'Grupo Capital Dois', cnpj: 'Múltiplas Empresas' };
+  }, [selectedCnpj, transactions]);
+
   const renderContent = () => {
     if (currentView === 'dashboard') {
       return (
@@ -691,34 +707,95 @@ const App: React.FC = () => {
           </div>
         )}
       </div>
-      <div id="report-print-area">
-         <h1 style={{ textAlign: 'center', marginBottom: '40px', fontSize: '24px' }}>RELATÓRIO FINANCEIRO - FLOWSTATE</h1>
-         <div style={{ marginBottom: '20px' }}>
-            <p><strong>Emissão:</strong> {new Date().toLocaleDateString('pt-BR')}</p>
-            <p><strong>Filtro:</strong> {pdfReportType === 'all' ? 'Geral' : pdfReportType === TransactionType.INFLOW ? 'Entradas' : 'Saídas'}</p>
+      
+      {/* NOVO LAYOUT DO PDF - ROBUSTO E PROFISSIONAL */}
+      <div id="report-print-area" style={{ fontFamily: 'Segoe UI, Arial, sans-serif' }}>
+         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '40px', borderBottom: '2px solid #e2e8f0', paddingBottom: '20px' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+               {logoUrl ? (
+                 <img src={logoUrl} alt="Logo" style={{ height: '60px', width: 'auto', objectFit: 'contain' }} />
+               ) : (
+                 <div style={{ background: '#4f46e5', width: '50px', height: '50px', borderRadius: '12px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                   <div style={{ border: '3px solid white', width: '25px', height: '25px', borderRadius: '4px', transform: 'rotate(45deg)' }}></div>
+                 </div>
+               )}
+               <div>
+                  <h1 style={{ margin: 0, fontSize: '24px', fontWeight: '900', color: '#1e293b' }}>FlowState Intelligence</h1>
+                  <p style={{ margin: 0, fontSize: '10px', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase', letterSpacing: '1px' }}>Relatório Financeiro Consolidado</p>
+               </div>
+            </div>
+            <div style={{ textAlign: 'right' }}>
+               <p style={{ margin: 0, fontSize: '12px', fontWeight: 'bold', color: '#1e293b' }}>{currentOwnerForPdf.name}</p>
+               <p style={{ margin: '2px 0 0', fontSize: '10px', color: '#64748b', fontWeight: 'bold' }}>CNPJ: {currentOwnerForPdf.cnpj}</p>
+               <p style={{ margin: '8px 0 0', fontSize: '9px', color: '#94a3b8', fontWeight: 'bold' }}>Emitido em: {new Date().toLocaleDateString('pt-BR')} às {new Date().toLocaleTimeString('pt-BR')}</p>
+            </div>
          </div>
-         <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+
+         <div style={{ marginBottom: '30px' }}>
+            <h2 style={{ fontSize: '16px', fontWeight: '900', color: '#1e293b', textTransform: 'uppercase', marginBottom: '15px', borderLeft: '4px solid #4f46e5', paddingLeft: '10px' }}>
+               Resumo Financeiro - {pdfReportType === 'all' ? 'Visão Geral' : pdfReportType === TransactionType.INFLOW ? 'Entradas' : 'Saídas'}
+            </h2>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '15px' }}>
+               <div style={{ background: '#f8fafc', padding: '15px', borderRadius: '12px', border: '1px solid #f1f5f9' }}>
+                  <p style={{ margin: 0, fontSize: '9px', fontWeight: '900', color: '#10b981', textTransform: 'uppercase', marginBottom: '5px' }}>Total Entradas</p>
+                  <p style={{ margin: 0, fontSize: '18px', fontWeight: '900', color: '#064e3b' }}>R$ {reportSummary.inflow.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+               </div>
+               <div style={{ background: '#f8fafc', padding: '15px', borderRadius: '12px', border: '1px solid #f1f5f9' }}>
+                  <p style={{ margin: 0, fontSize: '9px', fontWeight: '900', color: '#f43f5e', textTransform: 'uppercase', marginBottom: '5px' }}>Total Saídas</p>
+                  <p style={{ margin: 0, fontSize: '18px', fontWeight: '900', color: '#4c0519' }}>R$ {reportSummary.outflow.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+               </div>
+               <div style={{ background: '#4f46e5', padding: '15px', borderRadius: '12px', color: 'white' }}>
+                  <p style={{ margin: 0, fontSize: '9px', fontWeight: '900', textTransform: 'uppercase', marginBottom: '5px', opacity: 0.8 }}>Saldo Líquido</p>
+                  <p style={{ margin: 0, fontSize: '18px', fontWeight: '900' }}>R$ {(reportSummary.inflow - reportSummary.outflow).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
+               </div>
+            </div>
+         </div>
+
+         <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '10px' }}>
             <thead>
-               <tr style={{ background: '#f1f5f9' }}>
-                  <th style={{ border: '1px solid #ddd', padding: '12px' }}>Data</th>
-                  <th style={{ border: '1px solid #ddd', padding: '12px' }}>Valor</th>
-                  <th style={{ border: '1px solid #ddd', padding: '12px' }}>Origem / Descrição</th>
-                  <th style={{ border: '1px solid #ddd', padding: '12px' }}>Banco</th>
+               <tr style={{ background: '#1e293b', color: 'white' }}>
+                  <th style={{ padding: '12px', textAlign: 'left', fontWeight: '900', borderTopLeftRadius: '8px' }}>DATA</th>
+                  <th style={{ padding: '12px', textAlign: 'left', fontWeight: '900' }}>ORIGEM / DESTINO</th>
+                  <th style={{ padding: '12px', textAlign: 'left', fontWeight: '900' }}>MÉTODO</th>
+                  <th style={{ padding: '12px', textAlign: 'left', fontWeight: '900' }}>BANCO</th>
+                  <th style={{ padding: '12px', textAlign: 'center', fontWeight: '900' }}>TIPO</th>
+                  <th style={{ padding: '12px', textAlign: 'right', fontWeight: '900', borderTopRightRadius: '8px' }}>VALOR</th>
                </tr>
             </thead>
             <tbody>
-               {reportTransactions.map(t => (
-                  <tr key={t.id}>
-                     <td style={{ border: '1px solid #ddd', padding: '10px' }}>{t.date.split('T')[0].split('-').reverse().join('/')}</td>
-                     <td style={{ border: '1px solid #ddd', padding: '10px', fontWeight: 'bold' }}>R$ {t.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</td>
-                     <td style={{ border: '1px solid #ddd', padding: '10px' }}>{t.origin || t.description}</td>
-                     <td style={{ border: '1px solid #ddd', padding: '10px' }}>{t.ownerBank}</td>
+               {reportTransactions.map((t, idx) => (
+                  <tr key={t.id} style={{ background: idx % 2 === 0 ? 'white' : '#f8fafc', borderBottom: '1px solid #f1f5f9' }}>
+                     <td style={{ padding: '10px 12px', fontWeight: 'bold', color: '#64748b' }}>{t.date.split('T')[0].split('-').reverse().join('/')}</td>
+                     <td style={{ padding: '10px 12px' }}>
+                        <div style={{ fontWeight: '900', color: '#1e293b' }}>{t.origin || t.counterpartyName}</div>
+                        <div style={{ fontSize: '8px', color: '#94a3b8', fontWeight: 'bold' }}>{t.description.substring(0, 40)}...</div>
+                     </td>
+                     <td style={{ padding: '10px 12px', fontWeight: 'bold', color: '#475569' }}>{t.paymentMethod}</td>
+                     <td style={{ padding: '10px 12px', color: '#64748b' }}>{t.ownerBank}</td>
+                     <td style={{ padding: '10px 12px', textAlign: 'center' }}>
+                        <span style={{ 
+                           padding: '2px 8px', 
+                           borderRadius: '4px', 
+                           fontSize: '8px', 
+                           fontWeight: '900', 
+                           textTransform: 'uppercase',
+                           background: t.type === TransactionType.INFLOW ? '#ecfdf5' : '#fff1f2',
+                           color: t.type === TransactionType.INFLOW ? '#065f46' : '#9f1239'
+                        }}>
+                           {t.type}
+                        </span>
+                     </td>
+                     <td style={{ padding: '10px 12px', textAlign: 'right', fontWeight: '900', color: t.type === TransactionType.INFLOW ? '#10b981' : '#1e293b' }}>
+                        {t.type === TransactionType.OUTFLOW ? '-' : ''} R$ {t.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                     </td>
                   </tr>
                ))}
             </tbody>
          </table>
-         <div style={{ marginTop: '30px', textAlign: 'right', fontSize: '18px', fontWeight: 'bold' }}>
-            TOTAL: R$ {reportTransactions.reduce((acc, t) => acc + (t.type === TransactionType.INFLOW ? t.amount : -t.amount), 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+
+         <div style={{ marginTop: '40px', paddingTop: '20px', borderTop: '1px solid #e2e8f0', textAlign: 'center' }}>
+            <p style={{ fontSize: '9px', color: '#94a3b8', fontWeight: 'bold' }}>Este documento foi gerado automaticamente pela plataforma FlowState Intelligence.</p>
+            <p style={{ fontSize: '8px', color: '#cbd5e1', marginTop: '5px' }}>FlowState Financeiro &copy; {new Date().getFullYear()} - Todos os direitos reservados.</p>
          </div>
       </div>
     </div>
