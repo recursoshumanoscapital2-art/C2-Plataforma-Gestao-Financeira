@@ -57,16 +57,16 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col justify-center items-center p-4">
       <div className="w-full max-w-sm">
-        <div className="flex flex-col items-center mb-8">
-          <img 
-            src="https://media.licdn.com/dms/image/v2/D4D0BAQH41gxV57DnqA/company-logo_200_200/company-logo_200_200/0/1680527601049/capitaldois_logo?e=2147483647&v=beta&t=9uEFrm2sEUXOAXyDnUi1S9-8fNdK03YNshAFKdKr2hA" 
-            alt="C2 Logo" 
-            className="h-24 w-24 rounded-2xl object-contain mb-4"
-          />
-          <h1 className="text-xl font-black text-slate-900 tracking-tight leading-tight text-center">C2 Gestao Financeira</h1>
-        </div>
-
         <div className="bg-white p-8 rounded-3xl shadow-lg border border-slate-100">
+          <div className="flex flex-col items-center mb-8">
+            <img 
+              src="https://media.licdn.com/dms/image/v2/D4D0BAQH41gxV57DnqA/company-logo_200_200/company-logo_200_200/0/1680527601049/capitaldois_logo?e=2147483647&v=beta&t=9uEFrm2sEUXOAXyDnUi1S9-8fNdK03YNshAFKdKr2hA" 
+              alt="C2 Logo" 
+              className="h-72 w-72 rounded-2xl object-contain mb-4"
+            />
+            <h1 className="text-xl font-black text-slate-900 tracking-tight leading-tight text-center">C2 Gestao Financeira</h1>
+          </div>
+
           <form onSubmit={handleLogin} className="space-y-6">
             <div>
               <label htmlFor="login" className="text-xs font-bold text-slate-500 uppercase tracking-wider">
