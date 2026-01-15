@@ -1,7 +1,9 @@
 
-import { GoogleGenAI, Type } from "@google/genai";
+import { GoogleGenAI } from "@google/genai";
+import { Type } from "@google/genai";
 import { Transaction, TransactionType, PaymentMethod, StatementResult } from "../types";
 
+// Helper function to process the bank statement using Gemini
 export async function processStatement(fileBase64: string, mimeType: string): Promise<StatementResult> {
   // Always initialize GoogleGenAI with a named parameter using process.env.API_KEY directly.
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
@@ -78,7 +80,8 @@ export async function processStatement(fileBase64: string, mimeType: string): Pr
   });
 
   // Access the text content directly using the .text property (not a method).
-  const jsonStr = response.text?.trim() || "{}";
+  // Following guidelines: const text = response.text;
+  const jsonStr = response.text?.trim() ?? "{}";
   const rawData = JSON.parse(jsonStr);
   const ownerName = rawData.ownerName || 'Empresa não identificada';
   const ownerCnpj = rawData.ownerCnpj || 'CNPJ não identificado';
