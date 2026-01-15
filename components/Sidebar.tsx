@@ -39,7 +39,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentUser }) => {
           <img 
             src="https://media.licdn.com/dms/image/v2/D4D0BAQH41gxV57DnqA/company-logo_200_200/company-logo_200_200/0/1680527601049/capitaldois_logo?e=2147483647&v=beta&t=9uEFrm2sEUXOAXyDnUi1S9-8fNdK03YNshAFKdKr2hA" 
             alt="C2 Logo" 
-            className="h-20 w-20 rounded-xl object-contain"
+            className="h-56 w-56 rounded-xl object-contain"
           />
           <div>
             <h1 className="text-lg font-black text-slate-900 tracking-tight leading-tight text-center">C2 Gestao Financeira</h1>
