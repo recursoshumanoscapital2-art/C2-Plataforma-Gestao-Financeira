@@ -2,7 +2,6 @@
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { Transaction, TransactionType } from './types';
 import { processStatement } from './services/geminiService';
-import { parsePDFLocally } from './services/pdfParserService';
 import Dashboard from './components/Dashboard';
 import TransactionTable from './components/TransactionTable';
 import Sidebar from './components/Sidebar';
@@ -229,24 +228,20 @@ const App: React.FC = () => {
     try {
       let currentTransactions = [...transactions];
       for (const file of fileList) {
-        let result;
-        
-        if (file.type === 'application/pdf') {
-          // IMPORTAÇÃO SEM IA (Local)
-          result = await parsePDFLocally(file);
-        } else {
-          // IMPORTAÇÃO COM IA (Imagens/Outros)
-          const base64 = await new Promise<string>((resolve) => {
-            const reader = new FileReader();
-            reader.onload = (e) => resolve(e.target?.result?.toString().split(',')[1] || "");
-            reader.readAsDataURL(file);
-          });
-          result = await processStatement(base64, file.type);
-        }
+        // Conversão universal para Base64 (funciona em todos os navegadores e ambientes como Render)
+        const base64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = (e) => resolve(e.target?.result?.toString().split(',')[1] || "");
+          reader.onerror = (e) => reject(new Error("Erro ao ler arquivo"));
+          reader.readAsDataURL(file);
+        });
+
+        // Todos os arquivos (PDF e Imagens) agora passam pela IA do Gemini
+        const result = await processStatement(base64, file.type);
 
         const isDuplicated = result.transactions.length > 0 && result.transactions.every(newT => 
           currentTransactions.some(existingT => 
-            existingT.date === newT.date && existingT.amount === newT.amount
+            existingT.date === newT.date && Math.abs(existingT.amount - newT.amount) < 0.01
           )
         );
         
@@ -265,7 +260,8 @@ const App: React.FC = () => {
       setCurrentView('dashboard');
     } catch (err: any) { 
       setError(err.message); 
-      console.error("Erro no processamento:", err);
+      console.error("Erro no processamento Gemini:", err);
+      alert(`Erro no processamento: ${err.message}`);
     } finally { 
       setIsLoading(false); 
       if (event.target) event.target.value = ''; 
@@ -279,35 +275,24 @@ const App: React.FC = () => {
     } catch (err) { console.error(err); }
   }, []);
 
-  const generateReport = (type: 'all' | TransactionType) => {
-    setPdfReportType(type);
-    setIsPdfModalOpen(false);
-    setTimeout(() => window.print(), 100);
-  };
-
   const handleAddCompany = async (e: React.FormEvent) => {
     e.preventDefault();
-    
     const allKnownNames = new Set<string>();
     const allKnownCnpjs = new Set<string>();
     registeredCompanies.forEach(c => {
       allKnownNames.add(c.name.trim().toLowerCase());
       if (c.cnpj && c.cnpj.trim()) allKnownCnpjs.add(c.cnpj.trim());
-      c.alternativeNames?.forEach(alt => allKnownNames.add(alt.trim().toLowerCase()));
     });
 
-    const cleanNewName = newCompanyName.trim().toLowerCase();
-    const cleanNewCnpj = newCompanyCnpj.trim();
-
-    if (allKnownNames.has(cleanNewName) || (cleanNewCnpj && allKnownCnpjs.has(cleanNewCnpj))) {
-      alert("Uma empresa com este nome, CNPJ ou nomenclatura consolidada já está cadastrada.");
+    if (allKnownNames.has(newCompanyName.trim().toLowerCase())) {
+      alert("Empresa já cadastrada.");
       return;
     }
 
     const altNames = newCompanyAltNames ? newCompanyAltNames.split(',').map(n => n.trim()).filter(n => n !== "") : [];
     const newCompany: CompanyInfo = { 
       name: newCompanyName.trim(), 
-      cnpj: cleanNewCnpj || '', 
+      cnpj: newCompanyCnpj.trim() || '', 
       alternativeNames: altNames,
       hidden: false
     };
@@ -333,83 +318,12 @@ const App: React.FC = () => {
   const saveCompanyEdit = async (identifier: string) => {
     const company = registeredCompanies.find(c => c.cnpj === identifier || c.name === identifier);
     if (!company?.id) return;
-    
     const altNames = editAltNameValue ? editAltNameValue.split(',').map(n => n.trim()).filter(n => n !== "") : [];
-    const hasNameChanged = editNameValue.trim() !== company.name.trim();
-    const updatedOriginalName = hasNameChanged ? company.name : (company.originalName || '');
-    
-    const affectedCompanies = registeredCompanies.filter(c => 
-      c.id !== company.id && 
-      (altNames.some(a => a.toLowerCase() === c.name.toLowerCase()) || editNameValue.toLowerCase() === c.name.toLowerCase())
-    );
-
-    for (const aff of affectedCompanies) {
-      if (aff.id) await updateDoc(doc(db, "companies", aff.id), { hidden: true });
-    }
-
-    const updates = { 
-      name: editNameValue.trim(), 
-      cnpj: editCnpjValue.trim(),
-      originalName: updatedOriginalName, 
-      alternativeNames: altNames 
-    };
-
+    const updates = { name: editNameValue.trim(), cnpj: editCnpjValue.trim(), alternativeNames: altNames };
     await updateDoc(doc(db, "companies", company.id), updates);
-    
-    setRegisteredCompanies(prev => prev.map(c => {
-      if (c.id === company.id) return { ...c, ...updates };
-      if (affectedCompanies.some(aff => aff.id === c.id)) return { ...c, hidden: true };
-      return c;
-    }));
-
-    setTransactions(prev => prev.map(t => {
-      if (t.ownerCnpj === company.cnpj || t.ownerName === company.name) {
-         return { ...t, ownerName: updates.name, ownerCnpj: updates.cnpj };
-      }
-      return t;
-    }));
-
+    setRegisteredCompanies(prev => prev.map(c => c.id === company.id ? { ...c, ...updates } : c));
     setEditingCnpj(null);
   };
-
-  const handleAddUser = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const newUser: UserInfo = { userId: Math.random().toString(36).substring(2, 8).toUpperCase(), login: newUserLogin, email: newUserEmail, password: newUserPassword, role: newUserRole, active: true };
-    try {
-      const docRef = await addDoc(collection(db, "users"), newUser);
-      setUsersList(prev => [...prev, { ...newUser, id: docRef.id }]);
-      setNewUserLogin(''); setNewUserEmail(''); setNewUserPassword(''); setNewUserRole('comum');
-      setIsAddingUser(false); alert("Usuário cadastrado!");
-    } catch (err) { alert("Erro ao cadastrar."); }
-  };
-
-  const handleToggleUserStatus = async (user: UserInfo) => {
-    if (!user.id) return;
-    const newStatus = !user.active;
-    try {
-      await updateDoc(doc(db, "users", user.id), { active: newStatus });
-      setUsersList(prev => prev.map(u => u.id === user.id ? { ...u, active: newStatus } : u));
-    } catch (err) { console.error(err); }
-  };
-
-  const handleSaveUserEdit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!editingUser?.id) return;
-    try {
-      const updates = { login: editingUser.login, email: editingUser.email, password: editingUser.password, role: editingUser.role };
-      await updateDoc(doc(db, "users", editingUser.id), updates);
-      setUsersList(prev => prev.map(u => u.id === editingUser.id ? { ...u, ...updates } : u));
-      setEditingUser(null); alert("Usuário atualizado!");
-    } catch (err) { console.error(err); }
-  };
-
-  const currentOwnerForPdf = useMemo(() => {
-    if (selectedCnpj && transactions.length > 0) {
-      const found = transactions.find(t => t.ownerCnpj === selectedCnpj);
-      return found ? { name: found.ownerName, cnpj: found.ownerCnpj } : { name: 'Grupo Capital Dois', cnpj: '' };
-    }
-    return { name: 'Grupo Capital Dois', cnpj: 'Múltiplas Empresas' };
-  }, [selectedCnpj, transactions]);
 
   const renderContent = () => {
     if (currentView === 'dashboard') {
@@ -420,7 +334,7 @@ const App: React.FC = () => {
               <div className="flex flex-col lg:flex-row justify-between items-start gap-6 mb-8 print-hidden">
                 <div className="flex flex-col gap-1">
                   <h2 className="text-2xl font-black text-slate-900">Gestor Financeiro</h2>
-                  <p className="text-sm text-slate-500 font-medium">Análise consolidada e filtros ativos</p>
+                  <p className="text-sm text-slate-500 font-medium">Análise via Inteligência Artificial</p>
                 </div>
                 <div className="flex flex-col sm:flex-row items-end sm:items-center gap-4 w-full lg:w-auto">
                   <div className="flex items-center gap-2 bg-white p-1.5 rounded-2xl border border-slate-100 shadow-sm">
@@ -455,8 +369,8 @@ const App: React.FC = () => {
           {isLoading ? (
             <div className="text-center py-20 bg-white rounded-[2rem] border border-slate-100 shadow-sm">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
-              <p className="font-black text-indigo-600 mb-2">Processando extratos localmente...</p>
-              <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">Aguarde a leitura do arquivo</p>
+              <p className="font-black text-indigo-600 mb-2">Processando com Inteligência Artificial...</p>
+              <p className="text-xs text-slate-400 font-bold uppercase tracking-widest">Extraindo dados e classificando transações</p>
             </div>
           ) : (
             <div className="text-center py-32 bg-white rounded-[3rem] border-2 border-dashed border-slate-200">
@@ -483,18 +397,14 @@ const App: React.FC = () => {
                   <div className="space-y-3">
                     <input className="w-full border rounded-lg p-2 font-bold text-xs" value={editNameValue} onChange={e => setEditNameValue(e.target.value)} placeholder="Nome" />
                     <input className="w-full border rounded-lg p-2 font-bold text-xs" value={editCnpjValue} onChange={e => setEditCnpjValue(e.target.value)} placeholder="CNPJ" />
-                    <input className="w-full border rounded-lg p-2 font-bold text-xs" value={editAltNameValue} onChange={e => setEditAltNameValue(e.target.value)} placeholder="Nomenclaturas" />
+                    <textarea className="w-full border rounded-lg p-2 font-bold text-xs" value={editAltNameValue} onChange={e => setEditAltNameValue(e.target.value)} placeholder="Nomenclaturas" />
                   </div>
                 ) : (
                   <>
                     <h3 className="font-black text-xl leading-tight text-slate-900">{c.name}</h3>
-                    {c.originalName && c.originalName !== c.name && (
-                      <p className="text-[10px] text-slate-400 font-bold italic mt-0.5">{c.originalName}</p>
-                    )}
-                    <p className="text-xs text-slate-500 font-mono mt-2">{c.cnpj || 'CNPJ não informado'}</p>
+                    <p className="text-xs text-slate-500 font-mono mt-2">{c.cnpj || 'CNPJ não informado (Preencher manualmente)'}</p>
                     {c.alternativeNames && c.alternativeNames.length > 0 && (
                       <div className="mt-3 pt-3 border-t border-slate-100">
-                        <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Nomenclaturas Consolidadas:</p>
                         <div className="flex flex-wrap gap-1">
                           {c.alternativeNames.map(alt => (
                             <span key={alt} className="px-1.5 py-0.5 bg-slate-200 text-slate-600 rounded text-[9px] font-bold">{alt}</span>
@@ -513,11 +423,7 @@ const App: React.FC = () => {
                 <h3 className="text-2xl font-black mb-6">Nova Empresa</h3>
                 <form onSubmit={handleAddCompany} className="space-y-4">
                   <input required placeholder="Nome / Razão Principal" value={newCompanyName} onChange={e => setNewCompanyName(e.target.value)} className="w-full p-4 bg-slate-50 border rounded-xl font-bold text-sm" />
-                  <input placeholder="CNPJ (Opcional)" value={newCompanyCnpj} onChange={e => setNewCompanyCnpj(e.target.value)} className="w-full p-4 bg-slate-50 border rounded-xl font-bold text-sm" />
-                  <div>
-                    <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Essa empresa possui outras nomenclaturas?</label>
-                    <textarea placeholder="Ex: Nome Fantasia, Siglas (separados por vírgula)" value={newCompanyAltNames} onChange={e => setNewCompanyAltNames(e.target.value)} className="w-full p-4 bg-slate-50 border rounded-xl font-bold text-sm h-24 resize-none" />
-                  </div>
+                  <input placeholder="CNPJ (Deixe vazio se não souber)" value={newCompanyCnpj} onChange={e => setNewCompanyCnpj(e.target.value)} className="w-full p-4 bg-slate-50 border rounded-xl font-bold text-sm" />
                   <div className="flex gap-3 pt-6"><button type="submit" className="flex-1 bg-indigo-600 text-white py-4 rounded-xl font-black uppercase text-xs">Salvar</button><button type="button" onClick={() => setIsAddingCompany(false)} className="flex-1 bg-slate-100 py-4 rounded-xl font-black uppercase text-xs">Cancelar</button></div>
                 </form>
               </div>
@@ -539,33 +445,28 @@ const App: React.FC = () => {
           </div>
           <div className="flex items-center gap-3">
             {currentView === 'dashboard' && transactions.length > 0 && (
-              <>
-                <button onClick={() => setIsPdfModalOpen(true)} className="bg-white hover:bg-slate-50 border px-4 py-2 rounded-xl text-sm font-bold text-slate-600 flex items-center gap-2 transition-all">
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" /></svg> PDF
-                </button>
-                <button 
-                  onClick={async () => {
-                    if (confirm("Deseja finalizar o dia e salvar os totais?")) {
-                      const summary = filteredTransactions.reduce((acc, t) => {
-                        if (t.type === TransactionType.INFLOW) acc.totalInflow += t.amount;
-                        else acc.totalOutflow += t.amount;
-                        return acc;
-                      }, { totalInflow: 0, totalOutflow: 0 });
-                      await addDoc(collection(db, "Dashboard"), { 
-                        timestamp: new Date().toISOString(), 
-                        entradas: summary.totalInflow, 
-                        saidas: summary.totalOutflow, 
-                        saldo: summary.totalInflow - summary.totalOutflow,
-                        empresa: selectedCnpj ? transactions.find(t => t.ownerCnpj === selectedCnpj)?.ownerName : "Grupo Capital Dois"
-                      });
-                      alert("Resumo do dia salvo com sucesso!");
-                    }
-                  }} 
-                  className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-xl text-sm font-bold shadow-lg shadow-indigo-100 flex items-center gap-2 transition-all active:scale-95"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg> Finalizar Dia
-                </button>
-              </>
+              <button 
+                onClick={async () => {
+                  if (confirm("Deseja finalizar o dia e salvar os totais?")) {
+                    const summary = filteredTransactions.reduce((acc, t) => {
+                      if (t.type === TransactionType.INFLOW) acc.totalInflow += t.amount;
+                      else acc.totalOutflow += t.amount;
+                      return acc;
+                    }, { totalInflow: 0, totalOutflow: 0 });
+                    await addDoc(collection(db, "Dashboard"), { 
+                      timestamp: new Date().toISOString(), 
+                      entradas: summary.totalInflow, 
+                      saidas: summary.totalOutflow, 
+                      saldo: summary.totalInflow - summary.totalOutflow,
+                      empresa: selectedCnpj ? transactions.find(t => t.ownerCnpj === selectedCnpj)?.ownerName : "Grupo Capital Dois"
+                    });
+                    alert("Resumo do dia salvo com sucesso!");
+                  }
+                }} 
+                className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-xl text-sm font-bold shadow-lg shadow-indigo-100 flex items-center gap-2 transition-all active:scale-95"
+              >
+                Finalizar Dia
+              </button>
             )}
           </div>
         </header>
