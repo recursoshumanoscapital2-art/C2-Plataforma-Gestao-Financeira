@@ -1,9 +1,9 @@
 
-// Fix: Ensure standard modular Firebase v9+ imports are used correctly
-import { initializeApp } from "firebase/app";
-import { getFirestore } from "firebase/firestore";
+// Standard modular Firebase v9+ initialization
+// Re-importing to ensure correct resolution of initializeApp from the modular SDK
+import { initializeApp } from 'firebase/app';
+import { getFirestore } from 'firebase/firestore';
 
-// Your web app's Firebase configuration
 const firebaseConfig = {
   apiKey: "AIzaSyBWFTMqPjCkFv85I5lvPq2O4UXDzukIRSE",
   authDomain: "c2-bd-financeiro.firebaseapp.com",
@@ -13,7 +13,7 @@ const firebaseConfig = {
   appId: "1:375575228838:web:513ebee7add2ea9870df67"
 };
 
-// Initialize Firebase using the modular initializeApp function.
+// Initialize Firebase app instance
 const app = initializeApp(firebaseConfig);
-// Export the firestore instance.
+// Export Firestore database instance
 export const db = getFirestore(app);
