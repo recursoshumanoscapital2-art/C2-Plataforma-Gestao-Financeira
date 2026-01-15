@@ -43,7 +43,7 @@ interface UserInfo {
   active: boolean;
 }
 
-const PrintLayout = ({ reportData, companyInfo, logoUrl, dateRange }: { reportData: { title: string; data: Transaction[] }, companyInfo: any, logoUrl: string | null, dateRange: { start: string, end: string } }) => {
+const PrintLayout = ({ reportData, companyInfo, logoUrl, dateRange }: { reportData: { title: string; data: Transaction[]; type: 'inflow' | 'outflow' | 'all' }, companyInfo: any, logoUrl: string | null, dateRange: { start: string, end: string } }) => {
   const summary = useMemo(() => {
     return reportData.data.reduce((acc, t) => {
       if (t.type === TransactionType.INFLOW) acc.totalInflow += t.amount;
@@ -74,18 +74,24 @@ const PrintLayout = ({ reportData, companyInfo, logoUrl, dateRange }: { reportDa
       
       <main>
         <section className="report-summary">
-          <div className="summary-card" style={{ backgroundColor: '#f0fdf4', borderColor: '#bbf7d0' }}>
-            <p>Total de Entradas</p>
-            <h3 style={{ color: '#166534' }}>R$ {summary.totalInflow.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h3>
-          </div>
-          <div className="summary-card" style={{ backgroundColor: '#fff1f2', borderColor: '#fecdd3' }}>
-            <p>Total de Saídas</p>
-            <h3 style={{ color: '#9f1239' }}>R$ {summary.totalOutflow.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h3>
-          </div>
-          <div className="summary-card" style={{ backgroundColor: balance >= 0 ? '#f0f9ff' : '#fff1f2', borderColor: balance >= 0 ? '#bae6fd' : '#fecdd3' }}>
-            <p>Saldo Líquido</p>
-            <h3 style={{ color: balance >= 0 ? '#0369a1' : '#9f1239' }}>R$ {balance.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h3>
-          </div>
+          {(reportData.type === 'inflow' || reportData.type === 'all') && (
+            <div className="summary-card" style={{ backgroundColor: '#f0fdf4', borderColor: '#bbf7d0' }}>
+              <p>Total de Entradas</p>
+              <h3 style={{ color: '#166534' }}>R$ {summary.totalInflow.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h3>
+            </div>
+          )}
+          {(reportData.type === 'outflow' || reportData.type === 'all') && (
+            <div className="summary-card" style={{ backgroundColor: '#fff1f2', borderColor: '#fecdd3' }}>
+              <p>Total de Saídas</p>
+              <h3 style={{ color: '#9f1239' }}>R$ {summary.totalOutflow.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h3>
+            </div>
+          )}
+          {reportData.type === 'all' && (
+            <div className="summary-card" style={{ backgroundColor: balance >= 0 ? '#f0f9ff' : '#fff1f2', borderColor: balance >= 0 ? '#bae6fd' : '#fecdd3' }}>
+              <p>Saldo Líquido</p>
+              <h3 style={{ color: balance >= 0 ? '#0369a1' : '#9f1239' }}>R$ {balance.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h3>
+            </div>
+          )}
         </section>
 
         <table>
@@ -161,7 +167,7 @@ const App: React.FC = () => {
   });
 
   const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
-  const [reportDataForPrint, setReportDataForPrint] = useState<{ title: string; data: Transaction[] } | null>(null);
+  const [reportDataForPrint, setReportDataForPrint] = useState<{ title: string; data: Transaction[]; type: 'inflow' | 'outflow' | 'all' } | null>(null);
 
   const uniqueCompanies = useMemo(() => {
     return registeredCompanies.filter(c => !c.hidden);
@@ -339,7 +345,7 @@ const App: React.FC = () => {
       data = filteredTransactions.filter(t => t.type === TransactionType.OUTFLOW);
       title = "Relatório de Saídas";
     }
-    setReportDataForPrint({ title, data });
+    setReportDataForPrint({ title, data, type });
   };
 
   const renderContent = () => {
