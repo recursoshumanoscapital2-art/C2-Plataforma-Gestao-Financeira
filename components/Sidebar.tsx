@@ -1,7 +1,12 @@
 import React from 'react';
 import { NavLink } from 'react-router-dom';
+import { UserInfo } from '../App';
 
-const Sidebar: React.FC = () => {
+interface SidebarProps {
+  currentUser: UserInfo | null;
+}
+
+const Sidebar: React.FC<SidebarProps> = ({ currentUser }) => {
   const menuItems = [
     { id: 'dashboard', path: '/', label: 'Dashboard', icon: (
       <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -24,6 +29,8 @@ const Sidebar: React.FC = () => {
       </svg>
     )},
   ];
+
+  const initials = currentUser?.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() || '??';
 
   return (
     <aside className="w-72 bg-white border-r border-slate-100 flex flex-col h-screen sticky top-0 z-40 print-hidden">
@@ -67,11 +74,11 @@ const Sidebar: React.FC = () => {
       <div className="p-6 border-t border-slate-50">
         <div className="flex items-center gap-3 p-3 rounded-2xl bg-slate-50 border border-slate-100">
           <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-black text-xs">
-            JD
+            {initials}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-xs font-black text-slate-900 truncate">John Doe</p>
-            <p className="text-[10px] text-slate-400 font-bold uppercase truncate">Admin</p>
+            <p className="text-xs font-black text-slate-900 truncate">{currentUser?.name || 'Usuário'}</p>
+            <p className="text-[10px] text-slate-400 font-bold uppercase truncate capitalize">{currentUser?.role || 'Nível'}</p>
           </div>
         </div>
       </div>
