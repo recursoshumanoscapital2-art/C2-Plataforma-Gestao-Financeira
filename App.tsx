@@ -102,6 +102,7 @@ const PrintLayout = ({ reportData, companyInfo, logoUrl, dateRange }: { reportDa
             <tr>
               <th>Data</th>
               <th>Empresa</th>
+              {(reportData.type === 'inflow' || reportData.type === 'all') && <th>Banco</th>}
               <th>Descrição</th>
               <th>Origem</th>
               <th style={{ textAlign: 'right' }}>Valor (R$)</th>
@@ -112,6 +113,7 @@ const PrintLayout = ({ reportData, companyInfo, logoUrl, dateRange }: { reportDa
               <tr key={t.id}>
                 <td>{new Date(t.date).toLocaleDateString('pt-BR')}</td>
                 <td>{t.ownerName}</td>
+                {(reportData.type === 'inflow' || reportData.type === 'all') && <td>{t.payingBank}</td>}
                 <td>{t.type === TransactionType.OUTFLOW ? t.counterpartyName : t.description}</td>
                 <td>{t.origin}</td>
                 <td style={{ textAlign: 'right', fontWeight: 600, color: t.type === TransactionType.INFLOW ? '#15803d' : '#be123c' }}>
