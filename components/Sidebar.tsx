@@ -1,4 +1,3 @@
-
 import React from 'react';
 
 interface SidebarProps {
@@ -33,13 +32,14 @@ const Sidebar: React.FC<SidebarProps> = ({ currentView, onViewChange }) => {
   return (
     <aside className="w-72 bg-white border-r border-slate-100 flex flex-col h-screen sticky top-0 z-40 print-hidden">
       <div className="p-8">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-100">
-            <div className="w-5 h-5 border-[3px] border-white rounded rotate-45"></div>
-          </div>
+        <div className="flex flex-col items-center gap-4">
+          <img 
+            src="https://media.licdn.com/dms/image/v2/D4D0BAQH41gxV57DnqA/company-logo_200_200/company-logo_200_200/0/1680527601049/capitaldois_logo?e=2147483647&v=beta&t=9uEFrm2sEUXOAXyDnUi1S9-8fNdK03YNshAFKdKr2hA" 
+            alt="C2 Logo" 
+            className="h-20 w-20 rounded-xl object-contain"
+          />
           <div>
-            <h1 className="text-xl font-black text-slate-900 tracking-tight leading-none">FlowState</h1>
-            <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest mt-1">Intelligence</p>
+            <h1 className="text-lg font-black text-slate-900 tracking-tight leading-tight text-center">C2 Gestao Financeira</h1>
           </div>
         </div>
       </div>
