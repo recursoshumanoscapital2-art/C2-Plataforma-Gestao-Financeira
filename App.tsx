@@ -151,11 +151,13 @@ const App: React.FC = () => {
   const [newCompanyName, setNewCompanyName] = useState('');
   const [newCompanyCnpj, setNewCompanyCnpj] = useState('');
   const [newCompanyAltNames, setNewCompanyAltNames] = useState('');
+  const [showAddAltNames, setShowAddAltNames] = useState(false);
   
   const [editingCnpj, setEditingCnpj] = useState<string | null>(null);
   const [editNameValue, setEditNameValue] = useState('');
   const [editCnpjValue, setEditCnpjValue] = useState('');
   const [editAltNameValue, setEditAltNameValue] = useState('');
+  const [showEditAltNames, setShowEditAltNames] = useState(false);
 
   const [usersList, setUsersList] = useState<UserInfo[]>([]);
   const [isAddingUser, setIsAddingUser] = useState(false);
@@ -306,26 +308,43 @@ const App: React.FC = () => {
     const docRef = await addDoc(collection(db, "companies"), newCompany);
     setRegisteredCompanies(prev => [...prev, { ...newCompany, id: docRef.id }]);
     setNewCompanyName(''); setNewCompanyCnpj(''); setNewCompanyAltNames(''); setIsAddingCompany(false);
+    setShowAddAltNames(false);
   };
 
   const startEditCompany = (company: CompanyInfo) => {
     setEditingCnpj(company.cnpj || company.name); 
     setEditNameValue(company.name);
     setEditCnpjValue(company.cnpj);
-    setEditAltNameValue(company.alternativeNames?.join(', ') || '');
+    const altNames = company.alternativeNames?.join(', ') || '';
+    setEditAltNameValue(altNames);
+    setShowEditAltNames(!!altNames);
   };
 
   const saveCompanyEdit = async (identifier: string) => {
     const company = registeredCompanies.find(c => c.cnpj === identifier || c.name === identifier);
     if (!company?.id) return;
-    const updates = { 
-      name: editNameValue.trim(), 
-      cnpj: editCnpjValue.trim(), 
-      alternativeNames: editAltNameValue ? editAltNameValue.split(',').map(n => n.trim()).filter(Boolean) : [] 
+
+    const updates: Partial<CompanyInfo> = {
+      cnpj: editCnpjValue.trim(),
+      alternativeNames: editAltNameValue ? editAltNameValue.split(',').map(n => n.trim()).filter(Boolean) : []
     };
+
+    const newName = editNameValue.trim();
+    if (newName !== company.name) {
+      updates.name = newName;
+      updates.originalName = company.name;
+    } else {
+      updates.name = newName;
+    }
+
     await updateDoc(doc(db, "companies", company.id), updates);
-    setRegisteredCompanies(prev => prev.map(c => c.id === company.id ? { ...c, ...updates } : c));
+
+    setRegisteredCompanies(prev => prev.map(c => 
+      c.id === company.id ? { ...c, ...updates } : c
+    ));
+
     setEditingCnpj(null);
+    setShowEditAltNames(false);
   };
   
   const handleAddUser = async (e: React.FormEvent) => {
@@ -478,7 +497,7 @@ const App: React.FC = () => {
                           {isEditing ? (
                             <div className="flex items-center gap-3">
                               <button onClick={() => saveCompanyEdit(editingCnpj!)} className="text-[10px] font-black uppercase text-emerald-600 hover:text-emerald-800">Salvar</button>
-                              <button onClick={() => setEditingCnpj(null)} className="text-[10px] font-black uppercase text-slate-400 hover:text-slate-600">Cancelar</button>
+                              <button onClick={() => { setEditingCnpj(null); setShowEditAltNames(false); }} className="text-[10px] font-black uppercase text-slate-400 hover:text-slate-600">Cancelar</button>
                             </div>
                           ) : ( <button onClick={() => startEditCompany(c)} className="text-[10px] font-black uppercase text-slate-400 hover:text-indigo-600">Editar</button> )}
                         </div>
@@ -486,12 +505,36 @@ const App: React.FC = () => {
                           <div className="space-y-3">
                             <input className="w-full border rounded-lg p-2 font-bold text-xs" value={editNameValue} onChange={e => setEditNameValue(e.target.value)} placeholder="Nome" />
                             <input className="w-full border rounded-lg p-2 font-bold text-xs" value={editCnpjValue} onChange={e => setEditCnpjValue(e.target.value)} placeholder="CNPJ" />
-                            <textarea className="w-full border rounded-lg p-2 font-bold text-xs" value={editAltNameValue} onChange={e => setEditAltNameValue(e.target.value)} placeholder="Nomenclaturas" />
+                            { showEditAltNames ? (
+                                <textarea 
+                                    className="w-full border rounded-lg p-2 font-bold text-xs" 
+                                    value={editAltNameValue} 
+                                    onChange={e => setEditAltNameValue(e.target.value)} 
+                                    placeholder="Nomes, separados por vírgula" 
+                                    rows={2}
+                                    autoFocus
+                                />
+                            ) : (
+                                <button 
+                                    type="button" 
+                                    onClick={() => setShowEditAltNames(true)} 
+                                    className="text-xs text-left font-bold text-indigo-600 hover:underline pt-1"
+                                >
+                                    Esse CNPJ possui outros nomes?
+                                </button>
+                            )}
                           </div>
                         ) : (
                           <>
                             <h3 className="font-black text-xl leading-tight text-slate-900">{c.name}</h3>
+                            {c.originalName && <p className="text-xs text-slate-400 font-medium -mt-1" title={`Nome anterior: ${c.originalName}`}>({c.originalName})</p>}
                             <p className="text-xs text-slate-500 font-mono mt-2">{c.cnpj || 'N/A'}</p>
+                            {c.alternativeNames && c.alternativeNames.length > 0 && (
+                              <div className="mt-3 pt-3 border-t border-slate-200/60">
+                                <p className="text-[9px] font-bold text-slate-400">Outros nomes:</p>
+                                <p className="text-xs text-slate-600 font-semibold leading-tight">{c.alternativeNames.join(', ')}</p>
+                              </div>
+                            )}
                           </>
                         )}
                       </div>
@@ -504,7 +547,25 @@ const App: React.FC = () => {
                         <form onSubmit={handleAddCompany} className="space-y-4">
                           <input required placeholder="Nome / Razão Principal" value={newCompanyName} onChange={e => setNewCompanyName(e.target.value)} className="w-full p-4 bg-slate-50 border rounded-xl font-bold text-sm" />
                           <input placeholder="CNPJ" value={newCompanyCnpj} onChange={e => setNewCompanyCnpj(e.target.value)} className="w-full p-4 bg-slate-50 border rounded-xl font-bold text-sm" />
-                          <div className="flex gap-3 pt-6"><button type="submit" className="flex-1 bg-indigo-600 text-white py-4 rounded-xl font-black uppercase text-xs">Salvar</button><button type="button" onClick={() => setIsAddingCompany(false)} className="flex-1 bg-slate-100 py-4 rounded-xl font-black uppercase text-xs">Cancelar</button></div>
+                          { showAddAltNames ? (
+                              <textarea
+                                  placeholder="Nomenclaturas alternativas (separadas por vírgula)"
+                                  value={newCompanyAltNames} 
+                                  onChange={e => setNewCompanyAltNames(e.target.value)} 
+                                  className="w-full p-4 bg-slate-50 border rounded-xl font-bold text-sm"
+                                  rows={2}
+                                  autoFocus
+                              />
+                          ) : (
+                              <button
+                                  type="button"
+                                  onClick={() => setShowAddAltNames(true)}
+                                  className="w-full text-left text-sm font-bold text-indigo-600 hover:underline p-2"
+                              >
+                                  + Esse CNPJ possui outros nomes?
+                              </button>
+                          )}
+                          <div className="flex gap-3 pt-6"><button type="submit" className="flex-1 bg-indigo-600 text-white py-4 rounded-xl font-black uppercase text-xs">Salvar</button><button type="button" onClick={() => { setIsAddingCompany(false); setShowAddAltNames(false); }} className="flex-1 bg-slate-100 py-4 rounded-xl font-black uppercase text-xs">Cancelar</button></div>
                         </form>
                       </div>
                     </div>
