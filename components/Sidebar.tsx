@@ -30,7 +30,7 @@ const Sidebar: React.FC<SidebarProps> = ({ currentUser }) => {
     )},
   ];
 
-  const initials = currentUser?.name.split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() || '??';
+  const initials = (currentUser?.name || '').split(' ').map(n => n[0]).join('').substring(0, 2).toUpperCase() || '??';
 
   return (
     <aside className="w-72 bg-white border-r border-slate-100 flex flex-col h-screen sticky top-0 z-40 print-hidden">
