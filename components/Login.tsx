@@ -1,9 +1,10 @@
 import React, { useState, useRef } from 'react';
 import { db } from '../firebase';
 import { collection, getDocs, query, where } from "firebase/firestore";
+import { UserInfo } from '../App';
 
 interface LoginProps {
-  onLoginSuccess: () => void;
+  onLoginSuccess: (user: UserInfo) => void;
 }
 
 const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
@@ -38,7 +39,8 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
       if (querySnapshot.empty) {
         setError('Usuário ou senha inválidos, ou o usuário está inativo.');
       } else {
-        onLoginSuccess();
+        const userData = { id: querySnapshot.docs[0].id, ...querySnapshot.docs[0].data() } as UserInfo;
+        onLoginSuccess(userData);
       }
     } catch (err) {
       console.error("Erro ao autenticar:", err);
