@@ -1,4 +1,4 @@
-
+// Ensure modular imports from Firebase v9+ are correctly structured
 import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
 
