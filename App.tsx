@@ -36,10 +36,12 @@ interface CompanyInfo {
 
 interface UserInfo {
   id?: string;
+  userId: string; // ID aleatório gerado
   login: string;
   email: string;
   password?: string;
   role: 'admin' | 'comum';
+  active: boolean; // Status de ativação
 }
 
 const App: React.FC = () => {
@@ -65,6 +67,7 @@ const App: React.FC = () => {
   // Estados para Usuários
   const [usersList, setUsersList] = useState<UserInfo[]>([]);
   const [isAddingUser, setIsAddingUser] = useState(false);
+  const [editingUser, setEditingUser] = useState<UserInfo | null>(null);
   const [newUserLogin, setNewUserLogin] = useState('');
   const [newUserEmail, setNewUserEmail] = useState('');
   const [newUserPassword, setNewUserPassword] = useState('');
@@ -316,13 +319,19 @@ const App: React.FC = () => {
     setEditingCnpj(null);
   };
 
+  const generateRandomID = () => {
+    return Math.random().toString(36).substring(2, 8).toUpperCase();
+  };
+
   const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
     const newUser: UserInfo = {
+      userId: generateRandomID(),
       login: newUserLogin,
       email: newUserEmail,
       password: newUserPassword,
-      role: newUserRole
+      role: newUserRole,
+      active: true
     };
     try {
       const docRef = await addDoc(collection(db, "users"), newUser);
@@ -333,6 +342,36 @@ const App: React.FC = () => {
     } catch (err) {
       console.error("Erro ao cadastrar usuário:", err);
       alert("Erro ao cadastrar usuário.");
+    }
+  };
+
+  const handleToggleUserStatus = async (user: UserInfo) => {
+    if (!user.id) return;
+    const newStatus = !user.active;
+    try {
+      await updateDoc(doc(db, "users", user.id), { active: newStatus });
+      setUsersList(prev => prev.map(u => u.id === user.id ? { ...u, active: newStatus } : u));
+    } catch (err) {
+      console.error("Erro ao alterar status do usuário:", err);
+    }
+  };
+
+  const handleSaveUserEdit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingUser?.id) return;
+    try {
+      const updates = {
+        login: editingUser.login,
+        email: editingUser.email,
+        password: editingUser.password,
+        role: editingUser.role
+      };
+      await updateDoc(doc(db, "users", editingUser.id), updates);
+      setUsersList(prev => prev.map(u => u.id === editingUser.id ? { ...u, ...updates } : u));
+      setEditingUser(null);
+      alert("Usuário atualizado com sucesso!");
+    } catch (err) {
+      console.error("Erro ao atualizar usuário:", err);
     }
   };
 
@@ -471,14 +510,23 @@ const App: React.FC = () => {
           
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {usersList.map(u => (
-              <div key={u.id} className="p-8 bg-slate-50 rounded-[2rem] border group hover:border-indigo-200 transition-all shadow-sm">
+              <div key={u.id} className={`p-8 rounded-[2rem] border group transition-all shadow-sm ${u.active ? 'bg-slate-50 border-slate-100' : 'bg-slate-100 border-slate-200 opacity-60'}`}>
+                <div className="flex justify-between mb-4">
+                  <p className="text-[9px] font-black uppercase text-indigo-400">ID: {u.userId}</p>
+                  <div className="flex gap-2">
+                    <button onClick={() => setEditingUser(u)} className="text-[10px] font-black uppercase text-slate-400 hover:text-indigo-600">Editar</button>
+                    <button onClick={() => handleToggleUserStatus(u)} className={`text-[10px] font-black uppercase ${u.active ? 'text-rose-500 hover:text-rose-600' : 'text-emerald-500 hover:text-emerald-600'}`}>
+                      {u.active ? 'Desativar' : 'Ativar'}
+                    </button>
+                  </div>
+                </div>
                 <div className="flex items-center gap-4 mb-4">
-                  <div className="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-black text-sm">
+                  <div className={`w-12 h-12 rounded-full flex items-center justify-center font-black text-sm ${u.active ? 'bg-indigo-100 text-indigo-600' : 'bg-slate-200 text-slate-400'}`}>
                     {u.login.substring(0, 2).toUpperCase()}
                   </div>
                   <div className="min-w-0">
                     <h3 className="font-black text-lg text-slate-900 truncate" title={u.login}>{u.login}</h3>
-                    <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded inline-block ${u.role === 'admin' ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-600'}`}>
+                    <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded inline-block ${u.role === 'admin' ? 'bg-indigo-600 text-white' : 'bg-slate-300 text-slate-700'}`}>
                       {u.role}
                     </span>
                   </div>
@@ -528,6 +576,54 @@ const App: React.FC = () => {
                   <div className="flex gap-3 pt-6">
                     <button type="submit" className="flex-1 bg-indigo-600 text-white py-4 rounded-xl font-black uppercase text-xs tracking-widest hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100">Salvar</button>
                     <button type="button" onClick={() => setIsAddingUser(false)} className="flex-1 bg-slate-100 py-4 rounded-xl font-black uppercase text-xs tracking-widest hover:bg-slate-200 transition-all">Cancelar</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          )}
+
+          {editingUser && (
+            <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-[100]">
+              <div className="bg-white p-10 rounded-[2.5rem] w-full max-w-md shadow-2xl animate-in zoom-in duration-200">
+                <h3 className="text-2xl font-black mb-6 text-slate-900">Editar Usuário</h3>
+                <p className="text-[10px] font-black text-slate-400 uppercase mb-6">ID: {editingUser.userId}</p>
+                <form onSubmit={handleSaveUserEdit} className="space-y-4">
+                  <div>
+                    <p className="text-[10px] font-black text-slate-400 uppercase px-1 mb-1">Login</p>
+                    <input required placeholder="Login" value={editingUser.login} onChange={e => setEditingUser({...editingUser, login: e.target.value})} className="w-full p-4 bg-slate-50 border rounded-xl outline-none font-bold text-sm focus:border-indigo-400 transition-all" />
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-black text-slate-400 uppercase px-1 mb-1">E-mail</p>
+                    <input required type="email" placeholder="E-mail" value={editingUser.email} onChange={e => setEditingUser({...editingUser, email: e.target.value})} className="w-full p-4 bg-slate-50 border rounded-xl outline-none font-bold text-sm focus:border-indigo-400 transition-all" />
+                  </div>
+                  <div>
+                    <p className="text-[10px] font-black text-slate-400 uppercase px-1 mb-1">Nova Senha</p>
+                    <input type="password" placeholder="Mudar Senha" value={editingUser.password} onChange={e => setEditingUser({...editingUser, password: e.target.value})} className="w-full p-4 bg-slate-50 border rounded-xl outline-none font-bold text-sm focus:border-indigo-400 transition-all" />
+                  </div>
+                  
+                  <div className="space-y-2">
+                    <p className="text-[10px] font-black text-slate-400 uppercase px-1">Perfil de Acesso</p>
+                    <div className="flex gap-2">
+                      <button 
+                        type="button" 
+                        onClick={() => setEditingUser({...editingUser, role: 'admin'})}
+                        className={`flex-1 py-3 rounded-xl font-black text-xs uppercase border transition-all ${editingUser.role === 'admin' ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-slate-50 text-slate-400 hover:text-slate-600'}`}
+                      >
+                        Admin
+                      </button>
+                      <button 
+                        type="button" 
+                        onClick={() => setEditingUser({...editingUser, role: 'comum'})}
+                        className={`flex-1 py-3 rounded-xl font-black text-xs uppercase border transition-all ${editingUser.role === 'comum' ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-slate-50 text-slate-400 hover:text-slate-600'}`}
+                      >
+                        Comum
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-3 pt-6">
+                    <button type="submit" className="flex-1 bg-indigo-600 text-white py-4 rounded-xl font-black uppercase text-xs tracking-widest hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100">Salvar Alterações</button>
+                    <button type="button" onClick={() => setEditingUser(null)} className="flex-1 bg-slate-100 py-4 rounded-xl font-black uppercase text-xs tracking-widest hover:bg-slate-200 transition-all">Cancelar</button>
                   </div>
                 </form>
               </div>
