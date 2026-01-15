@@ -1,16 +1,16 @@
 
-import { GoogleGenAI } from "@google/genai";
-import { Type } from "@google/genai";
+// Use the recommended import syntax for GoogleGenAI and Type
+import { GoogleGenAI, Type } from "@google/genai";
 import { Transaction, TransactionType, PaymentMethod, StatementResult } from "../types";
 
-// Helper function to process the bank statement using Gemini
 export async function processStatement(fileBase64: string, mimeType: string): Promise<StatementResult> {
-  // Always initialize GoogleGenAI with a named parameter using process.env.API_KEY directly.
-  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  // Always initialize GoogleGenAI with a named parameter
+  // Fixed spacing to match guideline: {apiKey: process.env.API_KEY}
+  const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
 
-  // Use 'gemini-3-pro-preview' for complex text tasks like financial data extraction and advanced reasoning.
+  // Utilizando o modelo gemini-3-pro-preview para análise de alta precisão em extratos bancários (Complex Text Task)
   const response = await ai.models.generateContent({
-    model: "gemini-3-pro-preview",
+    model: 'gemini-3-pro-preview',
     contents: {
       parts: [
         {
@@ -20,31 +20,29 @@ export async function processStatement(fileBase64: string, mimeType: string): Pr
           }
         },
         {
-          text: "Analise o extrato fornecido e extraia todos os dados solicitados no formato JSON especificado."
+          text: "Analise o extrato bancário (PDF ou Imagem) e extraia os dados para o formato JSON solicitado. Foque na precisão absoluta dos valores e datas."
         }
       ]
     },
     config: {
-      // System Instruction used to define model persona and rules for extraction
-      systemInstruction: `Você é um especialista em análise bancária e extração de dados financeiros.
-          Analise este extrato bancário e extraia as informações em formato JSON rigoroso.
+      // Adding thinkingBudget to leverage Gemini 3 Pro reasoning capabilities for complex bank parsing
+      thinkingConfig: { thinkingBudget: 32768 },
+      systemInstruction: `Você é um especialista em contabilidade e análise bancária brasileira.
+          Sua tarefa é converter extratos bancários em dados estruturados com precisão absoluta.
           
-          Identifique os dados do titular do extrato:
-          - Razão Social (ownerName)
-          - CNPJ (ownerCnpj)
-          - Instituição Bancária (ownerBank)
+          REGRAS CRÍTICAS PARA O PROPRIETÁRIO (OWNER):
+          1. ownerName: Identifique a Razão Social ou Nome do Titular da conta.
+          2. ownerCnpj: EXTRAIA O CNPJ APENAS se houver explicitamente a nomenclatura 'CNPJ' seguida de números no documento. Se não encontrar o termo 'CNPJ' explicitamente, deixe este campo vazio ("").
+          3. ownerBank: Identifique o banco emissor.
           
-          Depois, extraia a lista de transações com MÁXIMA PRECISÃO:
-          - Data e Horário (ISO 8601: YYYY-MM-DDTHH:mm:ss)
-          - Descrição original
-          - Valor (numérico positivo)
-          - Tipo (entrada ou saída)
-          - Nome da contraparte
-          - CNPJ da contraparte (se disponível)
-          - Método de pagamento (PIX, TED, BOLETO, CARTÃO, OUTROS)
-          - Nome do pagador
-          - Origem (ex: Venda Online, Loja Física, Tarifa Bancária)
-          - Banco da transação`,
+          REGRAS PARA TRANSAÇÕES:
+          - Identifique cada linha de movimentação.
+          - date: Formato ISO 8601 (YYYY-MM-DDTHH:mm:ss).
+          - amount: Valor numérico positivo.
+          - type: "entrada" para créditos/depósitos, "saída" para débitos/pagamentos/tarifas.
+          - paymentMethod: Classifique em PIX, TED, BOLETO, CARTÃO ou OUTROS.
+          - origin: Descreva a natureza (ex: Venda, Tarifa, Transferência).
+          - counterpartyName: Nome de quem recebeu ou enviou o dinheiro.`,
       responseMimeType: "application/json",
       responseSchema: {
         type: Type.OBJECT,
@@ -57,34 +55,32 @@ export async function processStatement(fileBase64: string, mimeType: string): Pr
             items: {
               type: Type.OBJECT,
               properties: {
-                date: { type: Type.STRING, description: 'ISO 8601 string including time (YYYY-MM-DDTHH:mm:ss)' },
+                date: { type: Type.STRING },
                 description: { type: Type.STRING },
                 amount: { type: Type.NUMBER },
-                type: { type: Type.STRING, description: 'Must be either "entrada" or "saída"' },
+                type: { type: Type.STRING },
                 counterpartyName: { type: Type.STRING },
                 counterpartyCnpj: { type: Type.STRING },
-                paymentMethod: { type: Type.STRING, description: 'One of: PIX, TED, BOLETO, CARTÃO, OUTROS' },
+                paymentMethod: { type: Type.STRING },
                 payerName: { type: Type.STRING },
                 origin: { type: Type.STRING },
                 payingBank: { type: Type.STRING }
               },
-              required: ['date', 'amount', 'type', 'description', 'origin', 'payingBank'],
-              propertyOrdering: ['date', 'description', 'amount', 'type', 'counterpartyName', 'counterpartyCnpj', 'paymentMethod', 'payerName', 'origin', 'payingBank']
+              required: ['date', 'amount', 'type', 'description']
             }
           }
         },
-        required: ['ownerName', 'ownerCnpj', 'ownerBank', 'transactions'],
-        propertyOrdering: ['ownerName', 'ownerCnpj', 'ownerBank', 'transactions']
+        required: ['ownerName', 'ownerCnpj', 'ownerBank', 'transactions']
       }
     }
   });
 
-  // Access the text content directly using the .text property (not a method).
-  // Following guidelines: const text = response.text;
+  // response.text is a getter property, safely access it
   const jsonStr = response.text?.trim() ?? "{}";
   const rawData = JSON.parse(jsonStr);
+  
   const ownerName = rawData.ownerName || 'Empresa não identificada';
-  const ownerCnpj = rawData.ownerCnpj || 'CNPJ não identificado';
+  const ownerCnpj = rawData.ownerCnpj || '';
   const ownerBank = rawData.ownerBank || 'Banco não identificado';
   
   return {
@@ -93,16 +89,16 @@ export async function processStatement(fileBase64: string, mimeType: string): Pr
     ownerBank,
     transactions: (rawData.transactions || []).map((item: any, index: number) => ({
       id: `${Date.now()}-${index}-${Math.random().toString(36).substr(2, 9)}`,
-      date: item.date,
-      description: item.description,
-      amount: item.amount,
-      type: item.type as TransactionType,
-      counterpartyName: item.counterpartyName || 'Desconhecido',
+      date: item.date || new Date().toISOString(),
+      description: item.description || 'Sem descrição',
+      amount: item.amount || 0,
+      type: item.type === 'entrada' ? TransactionType.INFLOW : TransactionType.OUTFLOW,
+      counterpartyName: item.counterpartyName || 'Não identificado',
       counterpartyCnpj: item.counterpartyCnpj || '',
-      paymentMethod: item.paymentMethod as PaymentMethod,
-      payerName: item.payerName || 'Própria Empresa',
-      origin: item.origin || 'Não identificado',
-      payingBank: item.payingBank || 'Instituição não informada',
+      paymentMethod: (item.paymentMethod as PaymentMethod) || PaymentMethod.OUTROS,
+      payerName: item.type === 'saída' ? ownerName : (item.counterpartyName || 'Terceiro'),
+      origin: item.origin || 'Extração IA',
+      payingBank: item.payingBank || ownerBank,
       notes: '', 
       ownerName,
       ownerCnpj,
