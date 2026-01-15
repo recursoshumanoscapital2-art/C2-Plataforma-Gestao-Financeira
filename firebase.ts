@@ -1,6 +1,7 @@
-// Standard modular Firebase v9+ imports
-import { initializeApp } from 'firebase/app';
-import { getFirestore } from 'firebase/firestore';
+
+// Fix: Ensure standard modular Firebase v9+ imports are used correctly
+import { initializeApp } from "firebase/app";
+import { getFirestore } from "firebase/firestore";
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
