@@ -1,5 +1,5 @@
 {
-  "name": "FlowState - Gestão Financeira Inteligente",
+  "name": "C2 Gestao Financeira",
   "description": "Uma plataforma avançada para análise de extratos bancários, permitindo a extração automática de CNPJs, datas, valores e categorias de pagamento para uma visão clara da saúde financeira da sua empresa.",
   "requestFramePermissions": [
     "camera"
