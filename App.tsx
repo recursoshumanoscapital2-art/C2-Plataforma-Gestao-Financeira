@@ -38,6 +38,7 @@ interface CompanyInfo {
 export interface UserInfo {
   id?: string;
   userId?: string; 
+  name: string;
   login: string;
   email: string;
   password?: string;
@@ -132,6 +133,10 @@ const PrintLayout = ({ reportData, companyInfo, logoUrl, dateRange }: { reportDa
 
 const App: React.FC = () => {
   const [isAuthenticated, setIsAuthenticated] = useState(() => sessionStorage.getItem('isAuthenticated') === 'true');
+  const [currentUser, setCurrentUser] = useState<UserInfo | null>(() => {
+    const storedUser = sessionStorage.getItem('currentUser');
+    return storedUser ? JSON.parse(storedUser) : null;
+  });
   const navigate = useNavigate();
   const location = useLocation();
 
@@ -154,6 +159,7 @@ const App: React.FC = () => {
 
   const [usersList, setUsersList] = useState<UserInfo[]>([]);
   const [isAddingUser, setIsAddingUser] = useState(false);
+  const [newUserName, setNewUserName] = useState('');
   const [newUserLogin, setNewUserLogin] = useState('');
   const [newUserEmail, setNewUserEmail] = useState('');
   const [newUserPassword, setNewUserPassword] = useState('');
@@ -325,11 +331,11 @@ const App: React.FC = () => {
   const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
     const newUser: UserInfo = {
-      login: newUserLogin, email: newUserEmail, password: newUserPassword, role: newUserRole, active: true
+      name: newUserName, login: newUserLogin, email: newUserEmail, password: newUserPassword, role: newUserRole, active: true
     };
     const docRef = await addDoc(collection(db, "users"), newUser);
     setUsersList(prev => [...prev, { ...newUser, id: docRef.id }]);
-    setNewUserLogin(''); setNewUserEmail(''); setNewUserPassword(''); setNewUserRole('comum');
+    setNewUserName(''); setNewUserLogin(''); setNewUserEmail(''); setNewUserPassword(''); setNewUserRole('comum');
     setIsAddingUser(false); setShowPassword(false);
   };
 
@@ -355,9 +361,11 @@ const App: React.FC = () => {
     setReportDataForPrint({ title, data, type });
   };
   
-  const handleLoginSuccess = () => {
+  const handleLoginSuccess = (user: UserInfo) => {
     sessionStorage.setItem('isAuthenticated', 'true');
+    sessionStorage.setItem('currentUser', JSON.stringify(user));
     setIsAuthenticated(true);
+    setCurrentUser(user);
     navigate('/');
   };
 
@@ -374,7 +382,7 @@ const App: React.FC = () => {
   return (
     <>
       <div className="min-h-screen bg-slate-50 flex print-hidden">
-        <Sidebar />
+        <Sidebar currentUser={currentUser} />
         <div className="flex-1 flex flex-col min-w-0">
           <header className="bg-white border-b border-slate-100 h-16 flex items-center px-6 sticky top-0 z-30 shadow-sm">
             <div className="flex-1">
@@ -513,6 +521,7 @@ const App: React.FC = () => {
                     <table className="w-full text-left">
                       <thead>
                         <tr className="border-b border-slate-100">
+                          <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Nome</th>
                           <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Login</th>
                           <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">Senha</th>
                           <th className="px-6 py-4 text-[10px] font-black uppercase tracking-widest text-slate-400">E-mail</th>
@@ -524,6 +533,7 @@ const App: React.FC = () => {
                       <tbody className="divide-y divide-slate-50">
                         {usersList.map(user => (
                           <tr key={user.id} className="hover:bg-slate-50 transition-colors">
+                            <td className="px-6 py-4 font-black text-slate-900">{user.name}</td>
                             <td className="px-6 py-4 font-bold text-slate-800">{user.login}</td>
                             <td className="px-6 py-4 text-sm text-slate-600 font-mono">
                               <div className="relative w-32">
@@ -565,6 +575,7 @@ const App: React.FC = () => {
                       <div className="bg-white p-10 rounded-[2.5rem] w-full max-w-md shadow-2xl">
                         <h3 className="text-2xl font-black mb-6">Novo Usuário</h3>
                         <form onSubmit={handleAddUser} className="space-y-4">
+                          <input required placeholder="Nome Completo" value={newUserName} onChange={e => setNewUserName(e.target.value)} className="w-full p-4 bg-slate-50 border rounded-xl font-bold text-sm" />
                           <input required placeholder="Login" value={newUserLogin} onChange={e => setNewUserLogin(e.target.value)} className="w-full p-4 bg-slate-50 border rounded-xl font-bold text-sm" />
                           <input required type="email" placeholder="E-mail" value={newUserEmail} onChange={e => setNewUserEmail(e.target.value)} className="w-full p-4 bg-slate-50 border rounded-xl font-bold text-sm" />
                           <div className="relative">
