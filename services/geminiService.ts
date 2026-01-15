@@ -7,7 +7,7 @@ export async function processStatement(fileBase64: string, mimeType: string): Pr
   // The API key is assumed to be pre-configured in the environment.
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
-  // Use 'gemini-3-pro-preview' for complex text tasks like financial data extraction.
+  // Use 'gemini-3-pro-preview' for complex text tasks like financial data extraction and advanced reasoning.
   const response = await ai.models.generateContent({
     model: "gemini-3-pro-preview",
     contents: {
@@ -75,6 +75,7 @@ export async function processStatement(fileBase64: string, mimeType: string): Pr
   });
 
   // Access the text content directly using the .text property (not a method).
+  // The response is already validated by the responseSchema above.
   const rawData = JSON.parse(response.text || "{}");
   const ownerName = rawData.ownerName || 'Empresa não identificada';
   const ownerCnpj = rawData.ownerCnpj || 'CNPJ não identificado';
