@@ -6,5 +6,5 @@ services:
     buildCommand: npm install && npm run build
     staticPublishPath: dist
     envVars:
-      - key: API_KEY
+      - key: https://api.render.com/deploy/srv-d5k450fpm1nc73fqfn40?key=aaAYJonr_ic
         sync: false
