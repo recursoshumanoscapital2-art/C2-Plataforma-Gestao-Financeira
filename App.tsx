@@ -11,10 +11,7 @@ import {
   getDocs, 
   addDoc, 
   updateDoc, 
-  deleteDoc, 
-  doc,
-  query,
-  where
+  doc
 } from "firebase/firestore";
 
 export interface ColumnFilters {
@@ -34,7 +31,7 @@ interface CompanyInfo {
   originalName?: string;
   cnpj: string;
   alternativeNames?: string[];
-  hidden?: boolean; // Marcação para não exibir caso consolidada
+  hidden?: boolean; 
 }
 
 interface UserInfo {
@@ -50,6 +47,7 @@ interface UserInfo {
 const App: React.FC = () => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [isDataLoaded, setIsDataLoaded] = useState(false); // Flag crítica para evitar duplicidade no carregamento
   const [elapsedTime, setElapsedTime] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [selectedCnpj, setSelectedCnpj] = useState<string | null>(null);
@@ -94,7 +92,6 @@ const App: React.FC = () => {
     notes: ''
   });
 
-  // Filtra empresas para exibição: remove as marcadas como hidden
   const uniqueCompanies = useMemo(() => {
     return registeredCompanies.filter(c => !c.hidden);
   }, [registeredCompanies]);
@@ -116,26 +113,22 @@ const App: React.FC = () => {
     const fetchData = async () => {
       setIsLoading(true);
       try {
-        const transSnapshot = await getDocs(collection(db, "transactions"));
-        const transList = transSnapshot.docs.map(doc => ({
-          ...doc.data(),
-          id: doc.id
-        })) as Transaction[];
+        const [transSnapshot, compSnapshot, usersSnapshot] = await Promise.all([
+          getDocs(collection(db, "transactions")),
+          getDocs(collection(db, "companies")),
+          getDocs(collection(db, "users"))
+        ]);
+
+        const transList = transSnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })) as Transaction[];
         setTransactions(transList);
 
-        const compSnapshot = await getDocs(collection(db, "companies"));
-        const compList = compSnapshot.docs.map(doc => ({
-          ...doc.data(),
-          id: doc.id
-        })) as CompanyInfo[];
+        const compList = compSnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })) as CompanyInfo[];
         setRegisteredCompanies(compList);
 
-        const usersSnapshot = await getDocs(collection(db, "users"));
-        const usersListData = usersSnapshot.docs.map(doc => ({
-          ...doc.data(),
-          id: doc.id
-        })) as UserInfo[];
+        const usersListData = usersSnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })) as UserInfo[];
         setUsersList(usersListData);
+        
+        setIsDataLoaded(true); // Marca que o carregamento inicial terminou com sucesso
       } catch (err) {
         console.error("Erro ao carregar dados do Firebase:", err);
       } finally {
@@ -145,39 +138,46 @@ const App: React.FC = () => {
     fetchData();
   }, []);
 
-  // Sincronização inteligente: evita duplicados checando nomes e nomenclaturas alternativas
+  // Sincronização robusta: Só roda se isDataLoaded for true
   useEffect(() => {
     const syncCompanies = async () => {
-      const existingNames = new Set(registeredCompanies.map(c => c.name.toLowerCase()));
-      const altNamesMap = new Set(registeredCompanies.flatMap(c => c.alternativeNames?.map(a => a.toLowerCase()) || []));
+      if (!isDataLoaded || transactions.length === 0) return;
+
+      const allKnownNames = new Set<string>();
+      registeredCompanies.forEach(c => {
+        allKnownNames.add(c.name.trim().toLowerCase());
+        c.alternativeNames?.forEach(alt => allKnownNames.add(alt.trim().toLowerCase()));
+      });
       
       const newCompaniesToAdd: CompanyInfo[] = [];
+      const namesAddedInThisBatch = new Set<string>();
       
       transactions.forEach(t => {
-        const nameLower = t.ownerName.toLowerCase();
-        // Só adiciona se o nome não existir como principal ou alternativo de nenhuma empresa salva
-        if (!existingNames.has(nameLower) && !altNamesMap.has(nameLower)) {
+        const nameLower = t.ownerName.trim().toLowerCase();
+        if (!allKnownNames.has(nameLower) && !namesAddedInThisBatch.has(nameLower)) {
           newCompaniesToAdd.push({ 
-            name: t.ownerName, 
-            cnpj: t.ownerCnpj || '', 
+            name: t.ownerName.trim(), 
+            cnpj: (t.ownerCnpj || '').trim(), 
             alternativeNames: [],
             hidden: false
           });
-          existingNames.add(nameLower);
+          namesAddedInThisBatch.add(nameLower);
         }
       });
 
       if (newCompaniesToAdd.length > 0) {
+        const addedToState: CompanyInfo[] = [];
         for (const company of newCompaniesToAdd) {
           try {
             const docRef = await addDoc(collection(db, "companies"), company);
-            setRegisteredCompanies(prev => [...prev, { ...company, id: docRef.id }]);
-          } catch (err) { console.error(err); }
+            addedToState.push({ ...company, id: docRef.id });
+          } catch (err) { console.error("Erro ao sincronizar empresa:", err); }
         }
+        setRegisteredCompanies(prev => [...prev, ...addedToState]);
       }
     };
-    if (transactions.length > 0 && registeredCompanies.length >= 0) syncCompanies();
-  }, [transactions, registeredCompanies]);
+    syncCompanies();
+  }, [isDataLoaded, transactions, registeredCompanies.length]); // registeredCompanies.length como dependência segura
 
   const filteredTransactions = useMemo(() => {
     let result = [...transactions];
@@ -194,11 +194,25 @@ const App: React.FC = () => {
         t.counterpartyName.toLowerCase().includes(term) ||
         t.payingBank.toLowerCase().includes(term) ||
         t.amount.toString().includes(term) ||
-        t.ownerName.toLowerCase().includes(term)
+        t.ownerName.toLowerCase().includes(term) ||
+        t.description.toLowerCase().includes(term) ||
+        (t.notes && t.notes.toLowerCase().includes(term))
       );
     }
+    Object.keys(columnFilters).forEach((key) => {
+      const filterValue = columnFilters[key as keyof ColumnFilters];
+      if (filterValue) {
+        const value = filterValue.toLowerCase();
+        result = result.filter(t => {
+          if (key === 'amount') return t.amount.toString().includes(value);
+          if (key === 'date') return t.date.split('T')[0].includes(value);
+          const tValue = String(t[key as keyof Transaction] || '').toLowerCase();
+          return tValue.includes(value);
+        });
+      }
+    });
     return result.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-  }, [transactions, selectedCnpj, startDate, endDate, searchTerm]);
+  }, [transactions, selectedCnpj, startDate, endDate, searchTerm, columnFilters]);
 
   const handleFileUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
@@ -254,30 +268,44 @@ const App: React.FC = () => {
 
   const handleAddCompany = async (e: React.FormEvent) => {
     e.preventDefault();
-    const altNames = newCompanyAltNames ? newCompanyAltNames.split(',').map(n => n.trim()).filter(n => n !== "") : [];
-    const newCompany: CompanyInfo = { 
-      name: newCompanyName, 
-      cnpj: newCompanyCnpj || '', 
-      alternativeNames: altNames,
-      hidden: false
-    };
     
-    // Antes de adicionar, verifica se já existe uma empresa com esse nome principal para não duplicar ID
-    const exists = registeredCompanies.find(c => c.name.toLowerCase() === newCompanyName.toLowerCase());
-    if (exists) {
-      alert("Uma empresa com este nome já está cadastrada.");
+    const allKnownNames = new Set<string>();
+    const allKnownCnpjs = new Set<string>();
+    registeredCompanies.forEach(c => {
+      allKnownNames.add(c.name.trim().toLowerCase());
+      if (c.cnpj && c.cnpj.trim()) allKnownCnpjs.add(c.cnpj.trim());
+      c.alternativeNames?.forEach(alt => allKnownNames.add(alt.trim().toLowerCase()));
+    });
+
+    const cleanNewName = newCompanyName.trim().toLowerCase();
+    const cleanNewCnpj = newCompanyCnpj.trim();
+
+    if (allKnownNames.has(cleanNewName) || (cleanNewCnpj && allKnownCnpjs.has(cleanNewCnpj))) {
+      alert("Uma empresa com este nome, CNPJ ou nomenclatura consolidada já está cadastrada.");
       return;
     }
 
-    const docRef = await addDoc(collection(db, "companies"), newCompany);
-    setRegisteredCompanies(prev => [...prev, { ...newCompany, id: docRef.id }]);
-    setNewCompanyName(''); setNewCompanyCnpj(''); setNewCompanyAltNames(''); setIsAddingCompany(false);
+    const altNames = newCompanyAltNames ? newCompanyAltNames.split(',').map(n => n.trim()).filter(n => n !== "") : [];
+    const newCompany: CompanyInfo = { 
+      name: newCompanyName.trim(), 
+      cnpj: cleanNewCnpj || '', 
+      alternativeNames: altNames,
+      hidden: false
+    };
+
+    try {
+      const docRef = await addDoc(collection(db, "companies"), newCompany);
+      setRegisteredCompanies(prev => [...prev, { ...newCompany, id: docRef.id }]);
+      setNewCompanyName(''); setNewCompanyCnpj(''); setNewCompanyAltNames(''); setIsAddingCompany(false);
+    } catch (err) {
+      alert("Erro ao salvar empresa.");
+    }
   };
 
   const startEditCompany = (cnpj: string, currentName: string) => {
-    const company = registeredCompanies.find(c => c.cnpj === cnpj || (c.cnpj === '' && c.name === currentName));
+    const company = registeredCompanies.find(c => (c.cnpj && c.cnpj === cnpj) || c.name === currentName);
     if (!company) return;
-    setEditingCnpj(cnpj || company.name); // Usa nome como fallback se CNPJ vazio
+    setEditingCnpj(cnpj || company.name); 
     setEditNameValue(company.name);
     setEditCnpjValue(company.cnpj);
     setEditAltNameValue(company.alternativeNames?.join(', ') || '');
@@ -291,8 +319,6 @@ const App: React.FC = () => {
     const hasNameChanged = editNameValue.trim() !== company.name.trim();
     const updatedOriginalName = hasNameChanged ? company.name : (company.originalName || '');
     
-    // Lógica de Consolidação/Marcação:
-    // Se incluímos uma nomenclatura que já existe como empresa separada, marcamos a separada como hidden
     const affectedCompanies = registeredCompanies.filter(c => 
       c.id !== company.id && 
       (altNames.some(a => a.toLowerCase() === c.name.toLowerCase()) || editNameValue.toLowerCase() === c.name.toLowerCase())
@@ -303,8 +329,8 @@ const App: React.FC = () => {
     }
 
     const updates = { 
-      name: editNameValue, 
-      cnpj: editCnpjValue,
+      name: editNameValue.trim(), 
+      cnpj: editCnpjValue.trim(),
       originalName: updatedOriginalName, 
       alternativeNames: altNames 
     };
@@ -317,10 +343,9 @@ const App: React.FC = () => {
       return c;
     }));
 
-    // Atualiza transações se CNPJ ou nome mudou
     setTransactions(prev => prev.map(t => {
       if (t.ownerCnpj === company.cnpj || t.ownerName === company.name) {
-         return { ...t, ownerName: editNameValue, ownerCnpj: editCnpjValue };
+         return { ...t, ownerName: updates.name, ownerCnpj: updates.cnpj };
       }
       return t;
     }));
@@ -328,11 +353,9 @@ const App: React.FC = () => {
     setEditingCnpj(null);
   };
 
-  const generateRandomID = () => Math.random().toString(36).substring(2, 8).toUpperCase();
-
   const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
-    const newUser: UserInfo = { userId: generateRandomID(), login: newUserLogin, email: newUserEmail, password: newUserPassword, role: newUserRole, active: true };
+    const newUser: UserInfo = { userId: Math.random().toString(36).substring(2, 8).toUpperCase(), login: newUserLogin, email: newUserEmail, password: newUserPassword, role: newUserRole, active: true };
     try {
       const docRef = await addDoc(collection(db, "users"), newUser);
       setUsersList(prev => [...prev, { ...newUser, id: docRef.id }]);
@@ -360,16 +383,6 @@ const App: React.FC = () => {
       setEditingUser(null); alert("Usuário atualizado!");
     } catch (err) { console.error(err); }
   };
-
-  const reportTransactions = useMemo(() => pdfReportType === 'all' ? filteredTransactions : filteredTransactions.filter(t => t.type === pdfReportType), [filteredTransactions, pdfReportType]);
-
-  const reportSummary = useMemo(() => {
-    return reportTransactions.reduce((acc, t) => {
-      if (t.type === TransactionType.INFLOW) acc.inflow += t.amount;
-      else acc.outflow += t.amount;
-      return acc;
-    }, { inflow: 0, outflow: 0 });
-  }, [reportTransactions]);
 
   const currentOwnerForPdf = useMemo(() => {
     if (selectedCnpj && transactions.length > 0) {
@@ -484,12 +497,7 @@ const App: React.FC = () => {
                   <input placeholder="CNPJ (Opcional)" value={newCompanyCnpj} onChange={e => setNewCompanyCnpj(e.target.value)} className="w-full p-4 bg-slate-50 border rounded-xl font-bold text-sm" />
                   <div>
                     <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 block">Essa empresa possui outras nomenclaturas?</label>
-                    <textarea 
-                      placeholder="Ex: Nome Fantasia, Siglas (separados por vírgula)" 
-                      value={newCompanyAltNames} 
-                      onChange={e => setNewCompanyAltNames(e.target.value)} 
-                      className="w-full p-4 bg-slate-50 border rounded-xl font-bold text-sm h-24 resize-none"
-                    />
+                    <textarea placeholder="Ex: Nome Fantasia, Siglas (separados por vírgula)" value={newCompanyAltNames} onChange={e => setNewCompanyAltNames(e.target.value)} className="w-full p-4 bg-slate-50 border rounded-xl font-bold text-sm h-24 resize-none" />
                   </div>
                   <div className="flex gap-3 pt-6"><button type="submit" className="flex-1 bg-indigo-600 text-white py-4 rounded-xl font-black uppercase text-xs">Salvar</button><button type="button" onClick={() => setIsAddingCompany(false)} className="flex-1 bg-slate-100 py-4 rounded-xl font-black uppercase text-xs">Cancelar</button></div>
                 </form>
@@ -534,40 +542,6 @@ const App: React.FC = () => {
               </div>
             ))}
           </div>
-          {isAddingUser && (
-            <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-[100]">
-              <div className="bg-white p-10 rounded-[2.5rem] w-full max-w-md shadow-2xl animate-in zoom-in duration-200">
-                <h3 className="text-2xl font-black mb-6 text-slate-900">Novo Usuário</h3>
-                <form onSubmit={handleAddUser} className="space-y-4">
-                  <input required placeholder="Login" value={newUserLogin} onChange={e => setNewUserLogin(e.target.value)} className="w-full p-4 bg-slate-50 border rounded-xl outline-none font-bold text-sm" />
-                  <input required type="email" placeholder="E-mail" value={newUserEmail} onChange={e => setNewUserEmail(e.target.value)} className="w-full p-4 bg-slate-50 border rounded-xl outline-none font-bold text-sm" />
-                  <input required type="password" placeholder="Senha" value={newUserPassword} onChange={e => setNewUserPassword(e.target.value)} className="w-full p-4 bg-slate-50 border rounded-xl outline-none font-bold text-sm" />
-                  <div className="flex gap-2">
-                    <button type="button" onClick={() => setNewUserRole('admin')} className={`flex-1 py-3 rounded-xl font-black text-xs uppercase border ${newUserRole === 'admin' ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-slate-50 text-slate-400'}`}>Admin</button>
-                    <button type="button" onClick={() => setNewUserRole('comum')} className={`flex-1 py-3 rounded-xl font-black text-xs uppercase border ${newUserRole === 'comum' ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-slate-50 text-slate-400'}`}>Comum</button>
-                  </div>
-                  <div className="flex gap-3 pt-6"><button type="submit" className="flex-1 bg-indigo-600 text-white py-4 rounded-xl font-black uppercase text-xs">Salvar</button><button type="button" onClick={() => setIsAddingUser(false)} className="flex-1 bg-slate-100 py-4 rounded-xl font-black uppercase text-xs">Cancelar</button></div>
-                </form>
-              </div>
-            </div>
-          )}
-          {editingUser && (
-            <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-[100]">
-              <div className="bg-white p-10 rounded-[2.5rem] w-full max-w-md shadow-2xl animate-in zoom-in duration-200">
-                <h3 className="text-2xl font-black mb-6 text-slate-900">Editar Usuário</h3>
-                <form onSubmit={handleSaveUserEdit} className="space-y-4">
-                  <input required placeholder="Login" value={editingUser.login} onChange={e => setEditingUser({...editingUser, login: e.target.value})} className="w-full p-4 bg-slate-50 border rounded-xl font-bold text-sm" />
-                  <input required type="email" placeholder="E-mail" value={editingUser.email} onChange={e => setEditingUser({...editingUser, email: e.target.value})} className="w-full p-4 bg-slate-50 border rounded-xl font-bold text-sm" />
-                  <input type="password" placeholder="Nova Senha (deixe vazio se não mudar)" value={editingUser.password} onChange={e => setEditingUser({...editingUser, password: e.target.value})} className="w-full p-4 bg-slate-50 border rounded-xl font-bold text-sm" />
-                  <div className="flex gap-2">
-                    <button type="button" onClick={() => setEditingUser({...editingUser, role: 'admin'})} className={`flex-1 py-3 rounded-xl font-black text-xs uppercase border ${editingUser.role === 'admin' ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-slate-50 text-slate-400'}`}>Admin</button>
-                    <button type="button" onClick={() => setEditingUser({...editingUser, role: 'comum'})} className={`flex-1 py-3 rounded-xl font-black text-xs uppercase border ${editingUser.role === 'comum' ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-slate-50 text-slate-400'}`}>Comum</button>
-                  </div>
-                  <div className="flex gap-3 pt-6"><button type="submit" className="flex-1 bg-indigo-600 text-white py-4 rounded-xl font-black uppercase text-xs">Salvar</button><button type="button" onClick={() => setEditingUser(null)} className="flex-1 bg-slate-100 py-4 rounded-xl font-black uppercase text-xs">Cancelar</button></div>
-                </form>
-              </div>
-            </div>
-          )}
         </div>
       );
     }
@@ -615,91 +589,6 @@ const App: React.FC = () => {
           </div>
         </header>
         <main className="flex-1 p-6 overflow-y-auto">{renderContent()}</main>
-        {isPdfModalOpen && (
-          <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-[100]">
-            <div className="bg-white p-10 rounded-[2.5rem] w-full max-w-sm shadow-2xl">
-               <h3 className="text-2xl font-black mb-8 text-center text-slate-900">Exportar Relatório</h3>
-               <div className="space-y-3">
-                  <button onClick={() => generateReport(TransactionType.OUTFLOW)} className="w-full py-4 px-6 bg-rose-50 text-rose-700 hover:bg-rose-100 rounded-2xl font-black text-xs uppercase flex justify-between">Saídas <span>→</span></button>
-                  <button onClick={() => generateReport(TransactionType.INFLOW)} className="w-full py-4 px-6 bg-emerald-50 text-emerald-700 hover:bg-emerald-100 rounded-2xl font-black text-xs uppercase flex justify-between">Entradas <span>→</span></button>
-                  <button onClick={() => generateReport('all')} className="w-full py-4 px-6 bg-slate-900 text-white hover:bg-black rounded-2xl font-black text-xs uppercase flex justify-between">Geral <span>→</span></button>
-               </div>
-               <button onClick={() => setIsPdfModalOpen(false)} className="w-full mt-6 text-slate-400 font-bold text-[10px] uppercase">Fechar</button>
-            </div>
-          </div>
-        )}
-      </div>
-      
-      <div id="report-print-area" style={{ fontFamily: '"Segoe UI", Tahoma, sans-serif', width: '100%', boxSizing: 'border-box' }}>
-         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '40px', borderBottom: '2px solid #334155', paddingBottom: '20px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-               <div style={{ background: '#4f46e5', width: '45px', height: '45px', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                 <div style={{ border: '3px solid white', width: '22px', height: '22px', borderRadius: '4px', transform: 'rotate(45deg)' }}></div>
-               </div>
-               <div>
-                  <h1 style={{ margin: 0, fontSize: '22px', fontWeight: '900', color: '#0f172a' }}>FlowState Intelligence</h1>
-                  <p style={{ margin: 0, fontSize: '9px', fontWeight: 'bold', color: '#64748b', textTransform: 'uppercase', letterSpacing: '1px' }}>Financial Advisory & Analysis</p>
-               </div>
-            </div>
-            <div style={{ textAlign: 'right' }}>
-               <p style={{ margin: 0, fontSize: '13px', fontWeight: '900', color: '#0f172a' }}>{currentOwnerForPdf.name}</p>
-               <p style={{ margin: '2px 0 0', fontSize: '10px', color: '#64748b', fontWeight: 'bold' }}>{currentOwnerForPdf.cnpj}</p>
-               <p style={{ margin: '5px 0 0', fontSize: '9px', color: '#94a3b8' }}>Emitido: {new Date().toLocaleString('pt-BR')}</p>
-            </div>
-         </div>
-
-         <div style={{ marginBottom: '35px' }}>
-            <h2 style={{ fontSize: '15px', fontWeight: '900', color: '#1e293b', textTransform: 'uppercase', marginBottom: '15px', borderLeft: '4px solid #4f46e5', paddingLeft: '12px' }}>
-               Sumário do Relatório: {pdfReportType === 'all' ? 'Consolidado' : pdfReportType.toUpperCase()}
-            </h2>
-            <div style={{ display: 'flex', gap: '15px' }}>
-               <div style={{ flex: 1, background: '#f8fafc', padding: '15px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
-                  <p style={{ margin: 0, fontSize: '8px', fontWeight: '900', color: '#059669', textTransform: 'uppercase', marginBottom: '4px' }}>Entradas</p>
-                  <p style={{ margin: 0, fontSize: '16px', fontWeight: '900', color: '#064e3b' }}>R$ {reportSummary.inflow.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
-               </div>
-               <div style={{ flex: 1, background: '#f8fafc', padding: '15px', borderRadius: '10px', border: '1px solid #e2e8f0' }}>
-                  <p style={{ margin: 0, fontSize: '8px', fontWeight: '900', color: '#e11d48', textTransform: 'uppercase', marginBottom: '4px' }}>Saídas</p>
-                  <p style={{ margin: 0, fontSize: '16px', fontWeight: '900', color: '#4c0519' }}>R$ {reportSummary.outflow.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
-               </div>
-               <div style={{ flex: 1, background: '#1e293b', padding: '15px', borderRadius: '10px', color: 'white' }}>
-                  <p style={{ margin: 0, fontSize: '8px', fontWeight: '900', textTransform: 'uppercase', marginBottom: '4px', opacity: 0.8 }}>Saldo Final</p>
-                  <p style={{ margin: 0, fontSize: '16px', fontWeight: '900' }}>R$ {(reportSummary.inflow - reportSummary.outflow).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</p>
-               </div>
-            </div>
-         </div>
-
-         <table style={{ width: '100%', borderCollapse: 'collapse', border: 'none' }}>
-            <thead>
-               <tr style={{ background: '#1e293b', color: 'white' }}>
-                  <th style={{ padding: '10px 12px', textAlign: 'left', fontSize: '10px', fontWeight: '900', borderTopLeftRadius: '6px' }}>DATA</th>
-                  <th style={{ padding: '10px 12px', textAlign: 'left', fontSize: '10px', fontWeight: '900' }}>DETALHAMENTO</th>
-                  <th style={{ padding: '10px 12px', textAlign: 'left', fontSize: '10px', fontWeight: '900' }}>MÉTODO</th>
-                  <th style={{ padding: '10px 12px', textAlign: 'left', fontSize: '10px', fontWeight: '900' }}>BANCO</th>
-                  <th style={{ padding: '10px 12px', textAlign: 'right', fontSize: '10px', fontWeight: '900', borderTopRightRadius: '6px' }}>VALOR</th>
-               </tr>
-            </thead>
-            <tbody>
-               {reportTransactions.map((t, idx) => (
-                  <tr key={t.id} style={{ borderBottom: '1px solid #e2e8f0', pageBreakInside: 'avoid' }}>
-                     <td style={{ padding: '10px 12px', fontSize: '10px', color: '#475569', fontWeight: 'bold' }}>{t.date.split('T')[0].split('-').reverse().join('/')}</td>
-                     <td style={{ padding: '10px 12px', fontSize: '10px' }}>
-                        <div style={{ fontWeight: '900', color: '#0f172a' }}>{t.origin || t.counterpartyName}</div>
-                        <div style={{ fontSize: '8px', color: '#94a3b8' }}>{t.description.substring(0, 50)}...</div>
-                     </td>
-                     <td style={{ padding: '10px 12px', fontSize: '9px', fontWeight: 'bold', color: '#334155' }}>{t.paymentMethod}</td>
-                     <td style={{ padding: '10px 12px', fontSize: '9px', color: '#64748b' }}>{t.ownerBank}</td>
-                     <td style={{ padding: '10px 12px', textAlign: 'right', fontSize: '11px', fontWeight: '900', color: t.type === TransactionType.INFLOW ? '#10b981' : '#0f172a' }}>
-                        {t.type === TransactionType.OUTFLOW ? '-' : ''} R$ {t.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                     </td>
-                  </tr>
-               ))}
-            </tbody>
-         </table>
-
-         <div style={{ marginTop: '50px', paddingTop: '15px', borderTop: '1px solid #cbd5e1', textAlign: 'center' }}>
-            <p style={{ fontSize: '9px', color: '#94a3b8', fontWeight: 'bold', margin: 0 }}>Documento de uso interno gerado pela plataforma FlowState Intelligence.</p>
-            <p style={{ fontSize: '8px', color: '#cbd5e1', marginTop: '4px' }}>FlowState Systems &copy; {new Date().getFullYear()}</p>
-         </div>
       </div>
     </div>
   );
