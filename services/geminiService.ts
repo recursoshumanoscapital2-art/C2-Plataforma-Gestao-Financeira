@@ -1,11 +1,13 @@
+
 import { GoogleGenAI, Type } from "@google/genai";
 import { Transaction, TransactionType, PaymentMethod, StatementResult } from "../types";
 
-// Always use the named parameter apiKey and get it from process.env.API_KEY
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
-
 export async function processStatement(fileBase64: string, mimeType: string): Promise<StatementResult> {
-  // Use 'gemini-3-pro-preview' for complex reasoning tasks like parsing bank statements
+  // Always initialize GoogleGenAI with a named parameter using process.env.API_KEY directly.
+  // The API key is assumed to be pre-configured in the environment.
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+
+  // Use 'gemini-3-pro-preview' for complex text tasks like financial data extraction.
   const response = await ai.models.generateContent({
     model: "gemini-3-pro-preview",
     contents: {
@@ -40,7 +42,6 @@ export async function processStatement(fileBase64: string, mimeType: string): Pr
       ]
     },
     config: {
-      // responseMimeType is required when using a responseSchema
       responseMimeType: "application/json",
       responseSchema: {
         type: Type.OBJECT,
@@ -64,18 +65,16 @@ export async function processStatement(fileBase64: string, mimeType: string): Pr
                 origin: { type: Type.STRING },
                 payingBank: { type: Type.STRING }
               },
-              required: ['date', 'amount', 'type', 'description', 'origin', 'payingBank'],
-              propertyOrdering: ['date', 'description', 'amount', 'type', 'counterpartyName', 'counterpartyCnpj', 'paymentMethod', 'payerName', 'origin', 'payingBank']
+              required: ['date', 'amount', 'type', 'description', 'origin', 'payingBank']
             }
           }
         },
-        required: ['ownerName', 'ownerCnpj', 'ownerBank', 'transactions'],
-        propertyOrdering: ['ownerName', 'ownerCnpj', 'ownerBank', 'transactions']
+        required: ['ownerName', 'ownerCnpj', 'ownerBank', 'transactions']
       }
     }
   });
 
-  // Access the text property directly on the response object
+  // Access the text content directly using the .text property (not a method).
   const rawData = JSON.parse(response.text || "{}");
   const ownerName = rawData.ownerName || 'Empresa não identificada';
   const ownerCnpj = rawData.ownerCnpj || 'CNPJ não identificado';
@@ -97,7 +96,7 @@ export async function processStatement(fileBase64: string, mimeType: string): Pr
       payerName: item.payerName || 'Própria Empresa',
       origin: item.origin || 'Não identificado',
       payingBank: item.payingBank || 'Instituição não informada',
-      notes: '', // Initialized as empty for manual entry
+      notes: '', 
       ownerName,
       ownerCnpj,
       ownerBank
