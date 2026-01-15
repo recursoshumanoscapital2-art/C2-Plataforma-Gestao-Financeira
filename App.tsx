@@ -228,7 +228,6 @@ const App: React.FC = () => {
     try {
       let currentTransactions = [...transactions];
       for (const file of fileList) {
-        // Conversão universal para Base64 (funciona em todos os navegadores e ambientes como Render)
         const base64 = await new Promise<string>((resolve, reject) => {
           const reader = new FileReader();
           reader.onload = (e) => resolve(e.target?.result?.toString().split(',')[1] || "");
@@ -236,7 +235,6 @@ const App: React.FC = () => {
           reader.readAsDataURL(file);
         });
 
-        // Todos os arquivos (PDF e Imagens) agora passam pela IA do Gemini
         const result = await processStatement(base64, file.type);
 
         const isDuplicated = result.transactions.length > 0 && result.transactions.every(newT => 
@@ -278,10 +276,8 @@ const App: React.FC = () => {
   const handleAddCompany = async (e: React.FormEvent) => {
     e.preventDefault();
     const allKnownNames = new Set<string>();
-    const allKnownCnpjs = new Set<string>();
     registeredCompanies.forEach(c => {
       allKnownNames.add(c.name.trim().toLowerCase());
-      if (c.cnpj && c.cnpj.trim()) allKnownCnpjs.add(c.cnpj.trim());
     });
 
     if (allKnownNames.has(newCompanyName.trim().toLowerCase())) {
@@ -319,7 +315,18 @@ const App: React.FC = () => {
     const company = registeredCompanies.find(c => c.cnpj === identifier || c.name === identifier);
     if (!company?.id) return;
     const altNames = editAltNameValue ? editAltNameValue.split(',').map(n => n.trim()).filter(n => n !== "") : [];
-    const updates = { name: editNameValue.trim(), cnpj: editCnpjValue.trim(), alternativeNames: altNames };
+    
+    const updates: any = { 
+      name: editNameValue.trim(), 
+      cnpj: editCnpjValue.trim(), 
+      alternativeNames: altNames 
+    };
+
+    // Sempre que o nome for atualizado, guardamos o nome anterior em originalName
+    if (editNameValue.trim() !== company.name) {
+      updates.originalName = company.name;
+    }
+
     await updateDoc(doc(db, "companies", company.id), updates);
     setRegisteredCompanies(prev => prev.map(c => c.id === company.id ? { ...c, ...updates } : c));
     setEditingCnpj(null);
@@ -402,6 +409,9 @@ const App: React.FC = () => {
                 ) : (
                   <>
                     <h3 className="font-black text-xl leading-tight text-slate-900">{c.name}</h3>
+                    {c.originalName && (
+                      <p className="text-[10px] text-slate-400 font-medium italic -mt-1">{c.originalName}</p>
+                    )}
                     <p className="text-xs text-slate-500 font-mono mt-2">{c.cnpj || 'CNPJ não informado (Preencher manualmente)'}</p>
                     {c.alternativeNames && c.alternativeNames.length > 0 && (
                       <div className="mt-3 pt-3 border-t border-slate-100">
