@@ -1,4 +1,3 @@
-
 services:
   - type: web
     name: flowstate-financeiro
@@ -6,5 +5,5 @@ services:
     buildCommand: npm install && npm run build
     staticPublishPath: dist
     envVars:
-      - key: https://api.render.com/deploy/srv-d5k450fpm1nc73fqfn40?key=aaAYJonr_ic
+      - key: VITE_API_KEY
         sync: false
