@@ -1,7 +1,6 @@
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { Transaction, TransactionType } from './types';
 import { processStatement } from './services/geminiService';
-import { parsePDFLocally } from './services/pdfParserService';
 import Dashboard from './components/Dashboard';
 import TransactionTable from './components/TransactionTable';
 import Sidebar from './components/Sidebar';
@@ -232,19 +231,14 @@ const App: React.FC = () => {
     try {
       let currentTransactions = [...transactions];
       for (const file of fileList) {
-        let result;
-
-        if (file.type === 'application/pdf') {
-          result = await parsePDFLocally(file);
-        } else {
-          const base64 = await new Promise<string>((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = (e) => resolve(e.target?.result?.toString().split(',')[1] || "");
-            reader.onerror = (e) => reject(new Error("Erro ao ler arquivo"));
-            reader.readAsDataURL(file);
-          });
-          result = await processStatement(base64, file.type);
-        }
+        // Todos os arquivos, incluindo PDF, serão processados pelo Gemini
+        const base64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = (e) => resolve(e.target?.result?.toString().split(',')[1] || "");
+          reader.onerror = (e) => reject(new Error("Erro ao ler arquivo"));
+          reader.readAsDataURL(file);
+        });
+        const result = await processStatement(base64, file.type);
 
         const isDuplicated = result.transactions.length > 0 && result.transactions.every(newT => 
           currentTransactions.some(existingT => 
