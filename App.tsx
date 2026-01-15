@@ -398,7 +398,20 @@ const App: React.FC = () => {
                 ) : (
                   <>
                     <h3 className="font-black text-xl leading-tight text-slate-900">{c.name}</h3>
+                    {c.originalName && c.originalName !== c.name && (
+                      <p className="text-[10px] text-slate-400 font-bold italic mt-0.5">{c.originalName}</p>
+                    )}
                     <p className="text-xs text-slate-500 font-mono mt-2">{c.cnpj}</p>
+                    {c.alternativeNames && c.alternativeNames.length > 0 && (
+                      <div className="mt-3 pt-3 border-t border-slate-100">
+                        <p className="text-[8px] font-black text-slate-400 uppercase tracking-widest mb-1">Outras Nomenclaturas:</p>
+                        <div className="flex flex-wrap gap-1">
+                          {c.alternativeNames.map(alt => (
+                            <span key={alt} className="px-1.5 py-0.5 bg-slate-200 text-slate-600 rounded text-[9px] font-bold">{alt}</span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </>
                 )}
               </div>
