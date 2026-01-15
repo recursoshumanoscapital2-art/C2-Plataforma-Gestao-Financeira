@@ -354,7 +354,7 @@ const App: React.FC = () => {
         <>
           {transactions.length > 0 ? (
             <>
-              <div className="flex flex-col lg:flex-row justify-between items-start gap-6 mb-8 print-hidden">
+              <div className="flex flex-col lg:flex-row justify-between items-start gap-6 mb-8">
                 <div className="flex flex-col gap-1">
                   <h2 className="text-2xl font-black text-slate-900">Gestor Financeiro</h2>
                   <p className="text-sm text-slate-500 font-medium">Análise via Inteligência Artificial</p>
@@ -371,13 +371,13 @@ const App: React.FC = () => {
                   </select>
                 </div>
               </div>
-              <div className="space-y-10 print-hidden">
+              <div className="space-y-10">
                 <Dashboard transactions={filteredTransactions} selectedCnpj={selectedCnpj} logoUrl={logoUrl} onLogoChange={setLogoUrl} />
                 <TransactionTable transactions={filteredTransactions} allTransactions={transactions} onUpdateTransaction={handleUpdateTransaction} selectedCnpj={selectedCnpj} columnFilters={columnFilters} onColumnFilterChange={(f, v) => setColumnFilters(p => ({ ...p, [f]: v }))} />
               </div>
             </>
           ) : (
-            <div className="text-center py-32 bg-white rounded-[3rem] border border-slate-100 print-hidden">
+            <div className="text-center py-32 bg-white rounded-[3rem] border border-slate-100">
               <h2 className="text-3xl font-black mb-10 text-slate-900">Bem-vindo ao FlowState</h2>
               <button onClick={() => setCurrentView('import')} className="bg-indigo-600 text-white font-black px-10 py-4 rounded-2xl text-sm uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100">Importar Extratos</button>
             </div>
@@ -387,7 +387,7 @@ const App: React.FC = () => {
     }
     if (currentView === 'import') {
       return (
-        <div className="max-w-4xl mx-auto print-hidden">
+        <div className="max-w-4xl mx-auto">
           <h2 className="text-2xl font-black mb-8">Importação de Extratos</h2>
           {isLoading ? (
             <div className="text-center py-20 bg-white rounded-[2rem] border border-slate-100 shadow-sm">
@@ -404,7 +404,7 @@ const App: React.FC = () => {
     }
     if (currentView === 'companies') {
       return (
-        <div className="bg-white p-12 rounded-[3rem] border border-slate-100 print-hidden">
+        <div className="bg-white p-12 rounded-[3rem] border border-slate-100">
           <div className="flex justify-between items-center mb-12"><h2 className="text-2xl font-black">Empresas</h2><button onClick={() => setIsAddingCompany(true)} className="bg-indigo-600 text-white font-black px-6 py-3 rounded-xl text-xs uppercase">Cadastrar</button></div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {uniqueCompanies.map(c => {
@@ -452,7 +452,7 @@ const App: React.FC = () => {
     }
     if (currentView === 'users') {
       return (
-        <div className="bg-white p-12 rounded-[3rem] border border-slate-100 print-hidden">
+        <div className="bg-white p-12 rounded-[3rem] border border-slate-100">
           <div className="flex justify-between items-center mb-12">
             <h2 className="text-2xl font-black">Usuários</h2>
             <button onClick={() => setIsAddingUser(true)} className="bg-indigo-600 text-white font-black px-6 py-3 rounded-xl text-xs uppercase">Criar Usuário</button>
@@ -544,79 +544,81 @@ const App: React.FC = () => {
 
 
   return (
-    <div className="min-h-screen bg-slate-50 flex">
-      <Sidebar currentView={currentView} onViewChange={setCurrentView} />
-      <div className="flex-1 flex flex-col min-w-0">
-        <header className="bg-white border-b border-slate-100 h-16 flex items-center px-6 sticky top-0 z-30 shadow-sm print-hidden">
-          <div className="flex-1">
-            {currentView === 'dashboard' && <input type="text" placeholder="Busca global..." className="w-64 p-2.5 bg-slate-50 border rounded-xl text-xs outline-none focus:border-indigo-400" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />}
-          </div>
-          <div className="flex items-center gap-3">
-            {currentView === 'dashboard' && transactions.length > 0 && (
-              <>
-                <button 
-                  onClick={() => setIsPdfModalOpen(true)}
-                  className="bg-slate-100 hover:bg-slate-200 text-slate-600 px-5 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-colors"
-                >
-                  <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
-                  </svg>
-                  Baixar PDF
-                </button>
-                <button 
-                  onClick={async () => {
-                    if (confirm("Deseja finalizar o dia e salvar os totais?")) {
-                      // ... (lógica de finalizar dia)
-                    }
-                  }} 
-                  className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-xl text-sm font-bold shadow-lg shadow-indigo-100"
-                >
-                  Finalizar Dia
-                </button>
-              </>
-            )}
-          </div>
-        </header>
-        <main className="flex-1 p-6 overflow-y-auto">{renderContent()}</main>
-      </div>
+    <>
+      <div className="min-h-screen bg-slate-50 flex print-hidden">
+        <Sidebar currentView={currentView} onViewChange={setCurrentView} />
+        <div className="flex-1 flex flex-col min-w-0">
+          <header className="bg-white border-b border-slate-100 h-16 flex items-center px-6 sticky top-0 z-30 shadow-sm">
+            <div className="flex-1">
+              {currentView === 'dashboard' && <input type="text" placeholder="Busca global..." className="w-64 p-2.5 bg-slate-50 border rounded-xl text-xs outline-none focus:border-indigo-400" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />}
+            </div>
+            <div className="flex items-center gap-3">
+              {currentView === 'dashboard' && transactions.length > 0 && (
+                <>
+                  <button 
+                    onClick={() => setIsPdfModalOpen(true)}
+                    className="bg-slate-100 hover:bg-slate-200 text-slate-600 px-5 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-colors"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                    </svg>
+                    Baixar PDF
+                  </button>
+                  <button 
+                    onClick={async () => {
+                      if (confirm("Deseja finalizar o dia e salvar os totais?")) {
+                        // ... (lógica de finalizar dia)
+                      }
+                    }} 
+                    className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-xl text-sm font-bold shadow-lg shadow-indigo-100"
+                  >
+                    Finalizar Dia
+                  </button>
+                </>
+              )}
+            </div>
+          </header>
+          <main className="flex-1 p-6 overflow-y-auto">{renderContent()}</main>
+        </div>
 
-      {isPdfModalOpen && (
-        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-[100]">
-          <div className="bg-white p-10 rounded-[2.5rem] w-full max-w-sm shadow-2xl text-center">
-            <h3 className="text-xl font-black mb-2">Gerar Relatório PDF</h3>
-            <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-8">Selecione o tipo de relatório</p>
-            <div className="space-y-4">
+        {isPdfModalOpen && (
+          <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-[100]">
+            <div className="bg-white p-10 rounded-[2.5rem] w-full max-w-sm shadow-2xl text-center">
+              <h3 className="text-xl font-black mb-2">Gerar Relatório PDF</h3>
+              <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-8">Selecione o tipo de relatório</p>
+              <div className="space-y-4">
+                <button 
+                  onClick={() => { handleGeneratePdf('inflow'); setIsPdfModalOpen(false); }}
+                  className="w-full bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-black py-4 rounded-2xl text-sm uppercase tracking-widest transition-all border border-emerald-100"
+                >
+                  Relatório de Entradas
+                </button>
+                <button 
+                  onClick={() => { handleGeneratePdf('outflow'); setIsPdfModalOpen(false); }}
+                  className="w-full bg-rose-50 text-rose-700 hover:bg-rose-100 font-black py-4 rounded-2xl text-sm uppercase tracking-widest transition-all border border-rose-100"
+                >
+                  Relatório de Saídas
+                </button>
+                <button 
+                  onClick={() => { handleGeneratePdf('all'); setIsPdfModalOpen(false); }}
+                  className="w-full bg-slate-800 text-white hover:bg-black font-black py-4 rounded-2xl text-sm uppercase tracking-widest transition-all"
+                >
+                  Relatório Geral
+                </button>
+              </div>
               <button 
-                onClick={() => { handleGeneratePdf('inflow'); setIsPdfModalOpen(false); }}
-                className="w-full bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-black py-4 rounded-2xl text-sm uppercase tracking-widest transition-all border border-emerald-100"
+                onClick={() => setIsPdfModalOpen(false)}
+                className="mt-8 text-xs font-bold text-slate-400 hover:text-slate-600"
               >
-                Relatório de Entradas
-              </button>
-              <button 
-                onClick={() => { handleGeneratePdf('outflow'); setIsPdfModalOpen(false); }}
-                className="w-full bg-rose-50 text-rose-700 hover:bg-rose-100 font-black py-4 rounded-2xl text-sm uppercase tracking-widest transition-all border border-rose-100"
-              >
-                Relatório de Saídas
-              </button>
-              <button 
-                onClick={() => { handleGeneratePdf('all'); setIsPdfModalOpen(false); }}
-                className="w-full bg-slate-800 text-white hover:bg-black font-black py-4 rounded-2xl text-sm uppercase tracking-widest transition-all"
-              >
-                Relatório Geral
+                Cancelar
               </button>
             </div>
-            <button 
-              onClick={() => setIsPdfModalOpen(false)}
-              className="mt-8 text-xs font-bold text-slate-400 hover:text-slate-600"
-            >
-              Cancelar
-            </button>
           </div>
-        </div>
-      )}
-
+        )}
+      </div>
+      
       {reportDataForPrint && <PrintLayout reportData={reportDataForPrint} companyInfo={currentCompanyInfo} logoUrl={logoUrl} dateRange={{ start: startDate, end: endDate }} />}
-    </div>
+    </>
   );
 };
 
