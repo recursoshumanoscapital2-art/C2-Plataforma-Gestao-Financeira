@@ -27,16 +27,6 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, selectedCnpj }) => 
     }, { totalInflow: 0, totalOutflow: 0 });
   }, [transactions]);
 
-  const methodData = useMemo(() => {
-    const counts: Record<string, number> = {};
-    transactions.forEach(t => {
-      counts[t.paymentMethod] = (counts[t.paymentMethod] || 0) + 1;
-    });
-    return Object.entries(counts)
-      .map(([name, value]) => ({ name, value }))
-      .sort((a, b) => b.value - a.value);
-  }, [transactions]);
-
   const timelineData = useMemo(() => {
     const days: Record<string, { date: string, inflow: number, outflow: number }> = {};
     transactions.forEach(t => {
@@ -98,27 +88,8 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, selectedCnpj }) => 
         </div>
       </div>
 
-      {/* Payment Methods Section (Counters) */}
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100">
-        <h3 className="text-slate-500 text-[10px] font-bold mb-6 uppercase tracking-widest">Métodos de Pagamento</h3>
-        <div className="grid grid-cols-2 gap-4">
-          {methodData.map((method, index) => (
-            <div key={method.name} className="p-4 bg-slate-50 border border-slate-100 rounded-2xl flex flex-col items-center justify-center">
-              <p className="text-[9px] font-black uppercase tracking-widest text-slate-400 mb-1">{method.name}</p>
-              <p className="text-2xl font-black text-slate-900">{method.value}</p>
-              <div className="mt-2 w-8 h-1 rounded-full" style={{ backgroundColor: ['#6366f1', '#10b981', '#f59e0b', '#f43f5e', '#8b5cf6', '#ec4899'][index % 6] }}></div>
-            </div>
-          ))}
-          {methodData.length === 0 && (
-            <div className="col-span-2 text-center py-10">
-              <p className="text-slate-300 text-[10px] font-bold uppercase">Nenhum dado</p>
-            </div>
-          )}
-        </div>
-      </div>
-
       {/* Chart: Timeline */}
-      <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 lg:col-span-1">
+      <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 lg:col-span-2">
         <h3 className="text-slate-500 text-[10px] font-bold mb-4 uppercase tracking-widest">Evolução no Filtro</h3>
         <div className="h-56">
           <ResponsiveContainer width="100%" height="100%">
