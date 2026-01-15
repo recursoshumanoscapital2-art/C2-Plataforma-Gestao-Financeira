@@ -1,7 +1,7 @@
-
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { Transaction, TransactionType } from './types';
 import { processStatement } from './services/geminiService';
+import { parsePDFLocally } from './services/pdfParserService';
 import Dashboard from './components/Dashboard';
 import TransactionTable from './components/TransactionTable';
 import Sidebar from './components/Sidebar';
@@ -204,7 +204,11 @@ const App: React.FC = () => {
       if (filterValue) {
         const value = filterValue.toLowerCase();
         result = result.filter(t => {
-          if (key === 'amount') return (t.amount || 0).toString().includes(value);
+          if (key === 'amount') {
+            const formatted = (t.amount || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+            const displayVal = (t.type === TransactionType.OUTFLOW ? '-' : '') + formatted;
+            return displayVal.includes(filterValue);
+          }
           if (key === 'date') return t.date ? t.date.split('T')[0].includes(value) : false;
           const tValue = String(t[key as keyof Transaction] || '').toLowerCase();
           return tValue.includes(value);
@@ -228,14 +232,19 @@ const App: React.FC = () => {
     try {
       let currentTransactions = [...transactions];
       for (const file of fileList) {
-        const base64 = await new Promise<string>((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onload = (e) => resolve(e.target?.result?.toString().split(',')[1] || "");
-          reader.onerror = (e) => reject(new Error("Erro ao ler arquivo"));
-          reader.readAsDataURL(file);
-        });
+        let result;
 
-        const result = await processStatement(base64, file.type);
+        if (file.type === 'application/pdf') {
+          result = await parsePDFLocally(file);
+        } else {
+          const base64 = await new Promise<string>((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = (e) => resolve(e.target?.result?.toString().split(',')[1] || "");
+            reader.onerror = (e) => reject(new Error("Erro ao ler arquivo"));
+            reader.readAsDataURL(file);
+          });
+          result = await processStatement(base64, file.type);
+        }
 
         const isDuplicated = result.transactions.length > 0 && result.transactions.every(newT => 
           currentTransactions.some(existingT => 
@@ -258,7 +267,7 @@ const App: React.FC = () => {
       setCurrentView('dashboard');
     } catch (err: any) { 
       setError(err.message); 
-      console.error("Erro no processamento Gemini:", err);
+      console.error("Erro no processamento:", err);
       alert(`Erro no processamento: ${err.message}`);
     } finally { 
       setIsLoading(false); 
