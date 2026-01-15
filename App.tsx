@@ -34,6 +34,14 @@ interface CompanyInfo {
   alternativeNames?: string[];
 }
 
+interface UserInfo {
+  id?: string;
+  login: string;
+  email: string;
+  password?: string;
+  role: 'admin' | 'comum';
+}
+
 const App: React.FC = () => {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -53,6 +61,14 @@ const App: React.FC = () => {
   const [editingCnpj, setEditingCnpj] = useState<string | null>(null);
   const [editNameValue, setEditNameValue] = useState('');
   const [editAltNameValue, setEditAltNameValue] = useState('');
+
+  // Estados para Usuários
+  const [usersList, setUsersList] = useState<UserInfo[]>([]);
+  const [isAddingUser, setIsAddingUser] = useState(false);
+  const [newUserLogin, setNewUserLogin] = useState('');
+  const [newUserEmail, setNewUserEmail] = useState('');
+  const [newUserPassword, setNewUserPassword] = useState('');
+  const [newUserRole, setNewUserRole] = useState<'admin' | 'comum'>('comum');
 
   const [startDate, setStartDate] = useState<string>('');
   const [endDate, setEndDate] = useState<string>('');
@@ -121,6 +137,13 @@ const App: React.FC = () => {
           id: doc.id
         })) as CompanyInfo[];
         setRegisteredCompanies(compList);
+
+        const usersSnapshot = await getDocs(collection(db, "users"));
+        const usersListData = usersSnapshot.docs.map(doc => ({
+          ...doc.data(),
+          id: doc.id
+        })) as UserInfo[];
+        setUsersList(usersListData);
       } catch (err) {
         console.error("Erro ao carregar dados do Firebase:", err);
       } finally {
@@ -293,6 +316,26 @@ const App: React.FC = () => {
     setEditingCnpj(null);
   };
 
+  const handleAddUser = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const newUser: UserInfo = {
+      login: newUserLogin,
+      email: newUserEmail,
+      password: newUserPassword,
+      role: newUserRole
+    };
+    try {
+      const docRef = await addDoc(collection(db, "users"), newUser);
+      setUsersList(prev => [...prev, { ...newUser, id: docRef.id }]);
+      setNewUserLogin(''); setNewUserEmail(''); setNewUserPassword(''); setNewUserRole('comum');
+      setIsAddingUser(false);
+      alert("Usuário cadastrado com sucesso!");
+    } catch (err) {
+      console.error("Erro ao cadastrar usuário:", err);
+      alert("Erro ao cadastrar usuário.");
+    }
+  };
+
   const reportTransactions = useMemo(() => pdfReportType === 'all' ? filteredTransactions : filteredTransactions.filter(t => t.type === pdfReportType), [filteredTransactions, pdfReportType]);
 
   const renderContent = () => {
@@ -406,6 +449,86 @@ const App: React.FC = () => {
                     <input placeholder="Separe por vírgula se houver mais de uma" value={newCompanyAltName} onChange={e => setNewCompanyAltName(e.target.value)} className="w-full p-4 bg-slate-50 border rounded-xl outline-none font-bold text-sm" />
                   </div>
                   <div className="flex gap-3 pt-6"><button type="submit" className="flex-1 bg-indigo-600 text-white py-4 rounded-xl font-black uppercase text-xs tracking-widest">Salvar Empresa</button><button type="button" onClick={() => setIsAddingCompany(false)} className="flex-1 bg-slate-100 py-4 rounded-xl font-black uppercase text-xs tracking-widest">Cancelar</button></div>
+                </form>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+    if (currentView === 'users') {
+      return (
+        <div className="bg-white p-12 rounded-[3rem] border border-slate-100 print-hidden">
+          <div className="flex justify-between items-center mb-12">
+            <h2 className="text-2xl font-black">Usuários</h2>
+            <button 
+              onClick={() => setIsAddingUser(true)} 
+              className="bg-indigo-600 text-white font-black px-6 py-3 rounded-xl text-xs uppercase shadow-lg shadow-indigo-100 active:scale-95 transition-all"
+            >
+              Cadastrar Usuário
+            </button>
+          </div>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {usersList.map(u => (
+              <div key={u.id} className="p-8 bg-slate-50 rounded-[2rem] border group hover:border-indigo-200 transition-all shadow-sm">
+                <div className="flex items-center gap-4 mb-4">
+                  <div className="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center text-indigo-600 font-black text-sm">
+                    {u.login.substring(0, 2).toUpperCase()}
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="font-black text-lg text-slate-900 truncate" title={u.login}>{u.login}</h3>
+                    <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded inline-block ${u.role === 'admin' ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-600'}`}>
+                      {u.role}
+                    </span>
+                  </div>
+                </div>
+                <div className="pt-4 border-t border-slate-100">
+                  <p className="text-[9px] font-black text-slate-400 uppercase mb-1">E-mail</p>
+                  <p className="text-xs text-slate-700 font-bold truncate">{u.email}</p>
+                </div>
+              </div>
+            ))}
+            {usersList.length === 0 && (
+              <div className="col-span-full py-20 text-center bg-slate-50 rounded-[2rem] border-2 border-dashed border-slate-200">
+                <p className="text-slate-400 font-black text-xs uppercase">Nenhum usuário cadastrado</p>
+              </div>
+            )}
+          </div>
+
+          {isAddingUser && (
+            <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-[100]">
+              <div className="bg-white p-10 rounded-[2.5rem] w-full max-w-md shadow-2xl animate-in zoom-in duration-200">
+                <h3 className="text-2xl font-black mb-6 text-slate-900">Novo Usuário</h3>
+                <form onSubmit={handleAddUser} className="space-y-4">
+                  <input required placeholder="Login" value={newUserLogin} onChange={e => setNewUserLogin(e.target.value)} className="w-full p-4 bg-slate-50 border rounded-xl outline-none font-bold text-sm focus:border-indigo-400 transition-all" />
+                  <input required type="email" placeholder="E-mail" value={newUserEmail} onChange={e => setNewUserEmail(e.target.value)} className="w-full p-4 bg-slate-50 border rounded-xl outline-none font-bold text-sm focus:border-indigo-400 transition-all" />
+                  <input required type="password" placeholder="Senha" value={newUserPassword} onChange={e => setNewUserPassword(e.target.value)} className="w-full p-4 bg-slate-50 border rounded-xl outline-none font-bold text-sm focus:border-indigo-400 transition-all" />
+                  
+                  <div className="space-y-2">
+                    <p className="text-[10px] font-black text-slate-400 uppercase px-1">Perfil de Acesso</p>
+                    <div className="flex gap-2">
+                      <button 
+                        type="button" 
+                        onClick={() => setNewUserRole('admin')}
+                        className={`flex-1 py-3 rounded-xl font-black text-xs uppercase border transition-all ${newUserRole === 'admin' ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-slate-50 text-slate-400 hover:text-slate-600'}`}
+                      >
+                        Admin
+                      </button>
+                      <button 
+                        type="button" 
+                        onClick={() => setNewUserRole('comum')}
+                        className={`flex-1 py-3 rounded-xl font-black text-xs uppercase border transition-all ${newUserRole === 'comum' ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-slate-50 text-slate-400 hover:text-slate-600'}`}
+                      >
+                        Comum
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="flex gap-3 pt-6">
+                    <button type="submit" className="flex-1 bg-indigo-600 text-white py-4 rounded-xl font-black uppercase text-xs tracking-widest hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100">Salvar</button>
+                    <button type="button" onClick={() => setIsAddingUser(false)} className="flex-1 bg-slate-100 py-4 rounded-xl font-black uppercase text-xs tracking-widest hover:bg-slate-200 transition-all">Cancelar</button>
+                  </div>
                 </form>
               </div>
             </div>
