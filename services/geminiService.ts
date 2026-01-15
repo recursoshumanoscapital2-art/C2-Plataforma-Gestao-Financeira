@@ -1,17 +1,16 @@
 import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
 import { Transaction, TransactionType, PaymentMethod, StatementResult } from "../types";
 
-// Inicializa o SDK com a variável que você configurou no Render
-const genAI = new GoogleGenerativeAI(import.meta.env.VITE_GEMINI_API_KEY || "");
+// Usamos (import.meta as any) para evitar que o TypeScript reclame durante o build
+const apiKey = (import.meta as any).env.VITE_GEMINI_API_KEY || "";
+const genAI = new GoogleGenerativeAI(apiKey);
 
 export async function processStatement(fileBase64: string, mimeType: string): Promise<StatementResult> {
   
-  // Seleciona o modelo (1.5-flash é excelente para JSON e extratos)
   const model = genAI.getGenerativeModel({
-    model: "gemini-3-flash-preview",
+    model: "gemini-1.5-flash",
     generationConfig: {
       responseMimeType: "application/json",
-      // Definindo o esquema para garantir que a IA não invente campos
       responseSchema: {
         type: SchemaType.OBJECT,
         properties: {
@@ -39,26 +38,13 @@ export async function processStatement(fileBase64: string, mimeType: string): Pr
         required: ["ownerName", "ownerCnpj", "ownerBank", "transactions"]
       }
     },
-    systemInstruction: `Você é um especialista em contabilidade brasileira. 
-    Sua tarefa é converter extratos bancários em JSON puro.
-    REGRAS:
-    1. amount: Sempre número positivo.
-    2. type: Use apenas "entrada" ou "saída".
-    3. date: Formato YYYY-MM-DD.
-    4. Se não encontrar CNPJ, retorne "".`
+    systemInstruction: `Você é um especialista em contabilidade brasileira. Extraia os dados do extrato para JSON.`
   });
-
-  const prompt = "Analise o extrato bancário anexo e extraia todos os dados solicitados no formato JSON.";
 
   try {
     const result = await model.generateContent([
-      {
-        inlineData: {
-          mimeType: mimeType,
-          data: fileBase64
-        }
-      },
-      { text: prompt }
+      { inlineData: { mimeType: mimeType, data: fileBase64 } },
+      { text: "Extraia os dados deste extrato bancário." }
     ]);
 
     const response = await result.response;
@@ -67,13 +53,12 @@ export async function processStatement(fileBase64: string, mimeType: string): Pr
     const ownerName = rawData.ownerName || 'Não identificado';
     const ownerBank = rawData.ownerBank || 'Não identificado';
 
-    // Mapeia os dados da IA para o formato da sua aplicação
     return {
       ownerName,
       ownerCnpj: rawData.ownerCnpj || '',
       ownerBank,
       transactions: (rawData.transactions || []).map((item: any, index: number) => ({
-        id: `${Date.now()}-${index}-${Math.random().toString(36).substring(2, 9)}`,
+        id: `${Date.now()}-${index}`,
         date: item.date || new Date().toISOString(),
         description: item.description || 'Sem descrição',
         amount: item.amount || 0,
@@ -90,7 +75,7 @@ export async function processStatement(fileBase64: string, mimeType: string): Pr
       }))
     };
   } catch (error) {
-    console.error("Erro no processamento Gemini:", error);
-    throw new Error("Falha ao processar o extrato com Gemini.");
+    console.error("Erro Gemini:", error);
+    throw error;
   }
 }
