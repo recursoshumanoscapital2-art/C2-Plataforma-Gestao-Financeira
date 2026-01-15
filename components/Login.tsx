@@ -1,7 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import { db } from '../firebase';
 import { collection, getDocs, query, where } from "firebase/firestore";
-import { UserInfo } from '../App';
 
 interface LoginProps {
   onLoginSuccess: () => void;
@@ -9,7 +8,7 @@ interface LoginProps {
 
 const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
   const [login, setLogin] = useState('');
-  const [password, setPassword] = useState('');
+  const passwordRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
 
@@ -18,7 +17,15 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
     setIsLoading(true);
     setError('');
 
+    // Lê a senha diretamente do elemento do DOM e a armazena em uma variável local.
+    const password = passwordRef.current?.value || '';
+
     try {
+      if (!password) {
+        setError('Por favor, insira a senha.');
+        return;
+      }
+
       const usersRef = collection(db, "users");
       const q = query(usersRef, 
         where("login", "==", login),
@@ -37,8 +44,10 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
       console.error("Erro ao autenticar:", err);
       setError('Ocorreu um erro ao tentar fazer login. Tente novamente.');
     } finally {
-      // Limpa a senha da memória do componente por segurança, após a tentativa.
-      setPassword('');
+      // Limpa o valor do campo de senha diretamente no DOM por segurança.
+      if (passwordRef.current) {
+        passwordRef.current.value = '';
+      }
       setIsLoading(false);
     }
   };
@@ -77,8 +86,7 @@ const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
               <input
                 id="password"
                 type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                ref={passwordRef}
                 required
                 className="w-full mt-2 p-4 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-400 transition"
               />
