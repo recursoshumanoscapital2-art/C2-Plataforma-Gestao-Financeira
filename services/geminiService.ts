@@ -4,7 +4,6 @@ import { Transaction, TransactionType, PaymentMethod, StatementResult } from "..
 
 export async function processStatement(fileBase64: string, mimeType: string): Promise<StatementResult> {
   // Always initialize GoogleGenAI with a named parameter using process.env.API_KEY directly.
-  // The API key is assumed to be pre-configured in the environment.
   const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
   // Use 'gemini-3-pro-preview' for complex text tasks like financial data extraction and advanced reasoning.
@@ -19,29 +18,31 @@ export async function processStatement(fileBase64: string, mimeType: string): Pr
           }
         },
         {
-          text: `Analise este extrato bancário e extraia as informações em formato JSON. 
-          Identifique PRIMEIRO os dados do titular do extrato (a empresa dona da conta):
+          text: "Analise o extrato fornecido e extraia todos os dados solicitados no formato JSON especificado."
+        }
+      ]
+    },
+    config: {
+      // System Instruction used to define model persona and rules for extraction
+      systemInstruction: `Você é um especialista em análise bancária e extração de dados financeiros.
+          Analise este extrato bancário e extraia as informações em formato JSON rigoroso.
+          
+          Identifique os dados do titular do extrato:
           - Razão Social (ownerName)
           - CNPJ (ownerCnpj)
           - Instituição Bancária (ownerBank)
           
           Depois, extraia a lista de transações com MÁXIMA PRECISÃO:
-          - Data e Horário completos (ISO 8601 incluindo obrigatoriamente horas, minutos e segundos: YYYY-MM-DDTHH:mm:ss)
+          - Data e Horário (ISO 8601: YYYY-MM-DDTHH:mm:ss)
           - Descrição original
           - Valor (numérico positivo)
           - Tipo (entrada ou saída)
-          - Nome da contraparte (empresa favorecida ou pagadora)
+          - Nome da contraparte
           - CNPJ da contraparte (se disponível)
           - Método de pagamento (PIX, TED, BOLETO, CARTÃO, OUTROS)
-          - Nome do pagador (quem enviou o dinheiro)
-          - Origem: Identifique a origem da transação (ex: Venda Online, Loja Física, Tarifa Bancária)
-          - Banco: Identifique o nome da instituição financeira da transação específica
-          
-          Retorne um objeto JSON com 'ownerName', 'ownerCnpj', 'ownerBank' e um array 'transactions'.`
-        }
-      ]
-    },
-    config: {
+          - Nome do pagador
+          - Origem (ex: Venda Online, Loja Física, Tarifa Bancária)
+          - Banco da transação`,
       responseMimeType: "application/json",
       responseSchema: {
         type: Type.OBJECT,
@@ -54,7 +55,7 @@ export async function processStatement(fileBase64: string, mimeType: string): Pr
             items: {
               type: Type.OBJECT,
               properties: {
-                date: { type: Type.STRING, description: 'ISO 8601 string including time' },
+                date: { type: Type.STRING, description: 'ISO 8601 string including time (YYYY-MM-DDTHH:mm:ss)' },
                 description: { type: Type.STRING },
                 amount: { type: Type.NUMBER },
                 type: { type: Type.STRING, description: 'Must be either "entrada" or "saída"' },
@@ -65,18 +66,20 @@ export async function processStatement(fileBase64: string, mimeType: string): Pr
                 origin: { type: Type.STRING },
                 payingBank: { type: Type.STRING }
               },
-              required: ['date', 'amount', 'type', 'description', 'origin', 'payingBank']
+              required: ['date', 'amount', 'type', 'description', 'origin', 'payingBank'],
+              propertyOrdering: ['date', 'description', 'amount', 'type', 'counterpartyName', 'counterpartyCnpj', 'paymentMethod', 'payerName', 'origin', 'payingBank']
             }
           }
         },
-        required: ['ownerName', 'ownerCnpj', 'ownerBank', 'transactions']
+        required: ['ownerName', 'ownerCnpj', 'ownerBank', 'transactions'],
+        propertyOrdering: ['ownerName', 'ownerCnpj', 'ownerBank', 'transactions']
       }
     }
   });
 
   // Access the text content directly using the .text property (not a method).
-  // The response is already validated by the responseSchema above.
-  const rawData = JSON.parse(response.text || "{}");
+  const jsonStr = response.text?.trim() || "{}";
+  const rawData = JSON.parse(jsonStr);
   const ownerName = rawData.ownerName || 'Empresa não identificada';
   const ownerCnpj = rawData.ownerCnpj || 'CNPJ não identificado';
   const ownerBank = rawData.ownerBank || 'Banco não identificado';
