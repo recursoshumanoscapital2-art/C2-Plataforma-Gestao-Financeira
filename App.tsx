@@ -4,6 +4,7 @@ import { processStatement } from './services/geminiService';
 import Dashboard from './components/Dashboard';
 import TransactionTable from './components/TransactionTable';
 import Sidebar from './components/Sidebar';
+import Login from './components/Login';
 import { db } from './firebase';
 import { 
   collection, 
@@ -33,9 +34,9 @@ interface CompanyInfo {
   hidden?: boolean; 
 }
 
-interface UserInfo {
+export interface UserInfo {
   id?: string;
-  userId?: string; // Manter opcional para consistência
+  userId?: string; 
   login: string;
   email: string;
   password?: string;
@@ -129,6 +130,7 @@ const PrintLayout = ({ reportData, companyInfo, logoUrl, dateRange }: { reportDa
 
 
 const App: React.FC = () => {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isDataLoaded, setIsDataLoaded] = useState(false); 
@@ -205,8 +207,10 @@ const App: React.FC = () => {
         setIsLoading(false);
       }
     };
-    fetchData();
-  }, []);
+    if (isAuthenticated) {
+      fetchData();
+    }
+  }, [isAuthenticated]);
 
   const filteredTransactions = useMemo(() => {
     let result = [...transactions];
@@ -352,7 +356,7 @@ const App: React.FC = () => {
     if (currentView === 'dashboard') {
       return (
         <>
-          {transactions.length > 0 ? (
+          {transactions.length > 0 || isDataLoaded ? (
             <>
               <div className="flex flex-col lg:flex-row justify-between items-start gap-6 mb-8">
                 <div className="flex flex-col gap-1">
@@ -542,6 +546,9 @@ const App: React.FC = () => {
     return { name: first?.ownerName || 'Empresa', cnpj: first?.ownerCnpj || '' };
   }, [filteredTransactions, selectedCnpj]);
 
+  if (!isAuthenticated) {
+    return <Login onLoginSuccess={() => setIsAuthenticated(true)} />;
+  }
 
   return (
     <>
