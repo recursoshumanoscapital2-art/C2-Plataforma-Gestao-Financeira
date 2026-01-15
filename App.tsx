@@ -608,7 +608,10 @@ const App: React.FC = () => {
                       <tbody className="divide-y divide-slate-50">
                         {usersList.map(user => (
                           <tr key={user.id} className="hover:bg-slate-50 transition-colors">
-                            <td className="px-6 py-4 font-black text-slate-900">{user.name}</td>
+                            <td className="px-6 py-4">
+                              <div className="font-black text-slate-900">{user.name}</div>
+                              {user.userId && <div className="font-mono text-[10px] text-slate-400 mt-1">{user.userId}</div>}
+                            </td>
                             <td className="px-6 py-4 font-bold text-slate-800">{user.login}</td>
                             <td className="px-6 py-4 text-sm text-slate-600 font-mono">
                               <div className="relative w-32">
