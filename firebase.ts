@@ -1,4 +1,4 @@
-// Ensure modular imports from Firebase v9+ are correctly structured
+// Standard modular Firebase v9+ imports
 import { initializeApp } from "firebase/app";
 import { getFirestore } from "firebase/firestore";
 
@@ -12,6 +12,7 @@ const firebaseConfig = {
   appId: "1:375575228838:web:513ebee7add2ea9870df67"
 };
 
-// Initialize Firebase
+// Initialize Firebase using the modular initializeApp function.
 const app = initializeApp(firebaseConfig);
+// Export the firestore instance.
 export const db = getFirestore(app);
