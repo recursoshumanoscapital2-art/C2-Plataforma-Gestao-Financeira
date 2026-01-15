@@ -11,7 +11,7 @@ export default defineConfig(({ mode }) => {
     // O código buscará a chave de `VITE_API_KEY` no ambiente de hospedagem.
     // Isso resolve o erro de API Key no Render sem violar as diretrizes.
     define: {
-      'process.env.API_KEY': JSON.stringify(env.VITE_API_KEY || env.API_KEY)
+      'process.env.API_KEY': JSON.stringify(env.VITE_API_KEY)
     },
     server: {
       port: 3000,
