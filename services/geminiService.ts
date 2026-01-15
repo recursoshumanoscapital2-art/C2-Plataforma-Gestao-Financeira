@@ -1,80 +1,112 @@
-import { GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
-import { TransactionType, PaymentMethod, StatementResult } from "../types";
 
-// Pegando a chave com o prefixo VITE_ (obrigatório no Vite)
-// @ts-ignore - Ignora erro de tipagem do import.meta no build
-const API_KEY = import.meta.env.VITE_GEMINI_API_KEY || "";
-const genAI = new GoogleGenerativeAI(API_KEY);
+// Use the recommended import syntax for GoogleGenAI and Type
+import { GoogleGenAI, Type } from "@google/genai";
+import { Transaction, TransactionType, PaymentMethod, StatementResult } from "../types";
 
 export async function processStatement(fileBase64: string, mimeType: string): Promise<StatementResult> {
-  const model = genAI.getGenerativeModel({
-    model: "gemini-1.5-flash",
-    generationConfig: {
+  // FIX: Per coding guidelines, the API key must be obtained from process.env.API_KEY.
+  const apiKey = process.env.API_KEY;
+  if (!apiKey) {
+    throw new Error("A variável de ambiente API_KEY não está configurada no seu ambiente de hospedagem (Render).");
+  }
+  
+  // Initialize GoogleGenAI with the key from the environment
+  const ai = new GoogleGenAI({apiKey: apiKey});
+
+  // Utilizando o modelo gemini-3-flash-preview para uma análise rápida e gratuita.
+  const response = await ai.models.generateContent({
+    model: 'gemini-3-flash-preview',
+    contents: {
+      parts: [
+        {
+          inlineData: {
+            data: fileBase64,
+            mimeType: mimeType
+          }
+        },
+        {
+          text: "Analise o extrato bancário (PDF ou Imagem) e extraia os dados para o formato JSON solicitado. Foque na precisão absoluta dos valores e datas."
+        }
+      ]
+    },
+    config: {
+      systemInstruction: `Você é um especialista em contabilidade e análise bancária brasileira.
+          Sua tarefa é converter extratos bancários em dados estruturados com precisão absoluta.
+          
+          REGRAS CRÍTICAS PARA O PROPRIETÁRIO (OWNER):
+          1. ownerName: Identifique a Razão Social ou Nome do Titular da conta.
+          2. ownerCnpj: EXTRAIA O CNPJ APENAS se houver explicitamente a nomenclatura 'CNPJ' seguida de números no documento. Se não encontrar o termo 'CNPJ' explicitamente, deixe este campo vazio ("").
+          3. ownerBank: Identifique o banco emissor.
+          
+          REGRAS PARA TRANSAÇÕES:
+          - Identifique cada linha de movimentação.
+          - date: Formato ISO 8601 (YYYY-MM-DDTHH:mm:ss).
+          - amount: Valor numérico positivo.
+          - type: "entrada" para créditos/depósitos, "saída" para débitos/pagamentos/tarifas.
+          - paymentMethod: Classifique em PIX, TED, BOLETO, CARTÃO ou OUTROS.
+          - origin: Descreva a natureza (ex: Venda, Tarifa, Transferência).
+          - counterpartyName: Nome de quem recebeu ou enviou o dinheiro.`,
       responseMimeType: "application/json",
       responseSchema: {
-        type: SchemaType.OBJECT,
+        type: Type.OBJECT,
         properties: {
-          ownerName: { type: SchemaType.STRING },
-          ownerCnpj: { type: SchemaType.STRING },
-          ownerBank: { type: SchemaType.STRING },
+          ownerName: { type: Type.STRING },
+          ownerCnpj: { type: Type.STRING },
+          ownerBank: { type: Type.STRING },
           transactions: {
-            type: SchemaType.ARRAY,
+            type: Type.ARRAY,
             items: {
-              type: SchemaType.OBJECT,
+              type: Type.OBJECT,
               properties: {
-                date: { type: SchemaType.STRING },
-                description: { type: SchemaType.STRING },
-                amount: { type: SchemaType.NUMBER },
-                type: { type: SchemaType.STRING },
-                counterpartyName: { type: SchemaType.STRING },
-                paymentMethod: { type: SchemaType.STRING },
-                origin: { type: SchemaType.STRING },
-                payingBank: { type: SchemaType.STRING }
+                date: { type: Type.STRING },
+                description: { type: Type.STRING },
+                amount: { type: Type.NUMBER },
+                type: { type: Type.STRING },
+                counterpartyName: { type: Type.STRING },
+                counterpartyCnpj: { type: Type.STRING },
+                paymentMethod: { type: Type.STRING },
+                payerName: { type: Type.STRING },
+                origin: { type: Type.STRING },
+                payingBank: { type: Type.STRING }
               },
-              required: ["date", "amount", "type", "description"]
+              required: ['date', 'amount', 'type', 'description']
             }
           }
         },
-        required: ["ownerName", "ownerCnpj", "ownerBank", "transactions"]
+        required: ['ownerName', 'ownerCnpj', 'ownerBank', 'transactions']
       }
     }
   });
 
-  try {
-    const result = await model.generateContent([
-      { inlineData: { mimeType, data: fileBase64 } },
-      { text: "Extraia os dados deste extrato bancário para o formato JSON solicitado." }
-    ]);
-
-    const response = await result.response;
-    const rawData = JSON.parse(response.text());
-
-    const ownerName = rawData.ownerName || 'Não identificado';
-    const ownerBank = rawData.ownerBank || 'Não identificado';
-
-    return {
+  // response.text is a getter property, safely access it without method call
+  const jsonStr = response.text?.trim() ?? "{}";
+  const rawData = JSON.parse(jsonStr);
+  
+  const ownerName = rawData.ownerName || 'Empresa não identificada';
+  const ownerCnpj = rawData.ownerCnpj || '';
+  const ownerBank = rawData.ownerBank || 'Banco não identificado';
+  
+  return {
+    ownerName,
+    ownerCnpj,
+    ownerBank,
+    transactions: (rawData.transactions || []).map((item: any, index: number) => ({
+      // Using substring instead of deprecated substr
+      id: `${Date.now()}-${index}-${Math.random().toString(36).substring(2, 11)}`,
+      date: item.date || new Date().toISOString(),
+      description: item.description || 'Sem descrição',
+      amount: item.amount || 0,
+      type: item.type === 'entrada' ? TransactionType.INFLOW : TransactionType.OUTFLOW,
+      counterpartyName: item.counterpartyName || 'Não identificado',
+      counterpartyCnpj: item.counterpartyCnpj || '',
+      paymentMethod: (item.paymentMethod as PaymentMethod) || PaymentMethod.OUTROS,
+      payerName: item.type === 'saída' ? ownerName : (item.counterpartyName || 'Terceiro'),
+      origin: item.origin || 'Extração IA',
+      payingBank: item.payingBank || ownerBank,
+      notes: '', 
       ownerName,
-      ownerCnpj: rawData.ownerCnpj || '',
-      ownerBank,
-      transactions: (rawData.transactions || []).map((item: any, index: number) => ({
-        id: `${Date.now()}-${index}`,
-        date: item.date || new Date().toISOString(),
-        description: item.description || 'Sem descrição',
-        amount: Math.abs(item.amount || 0),
-        type: item.type === 'entrada' ? TransactionType.INFLOW : TransactionType.OUTFLOW,
-        counterpartyName: item.counterpartyName || 'Não identificado',
-        paymentMethod: (item.paymentMethod as PaymentMethod) || PaymentMethod.OUTROS,
-        payerName: item.type === 'saída' ? ownerName : (item.counterpartyName || 'Terceiro'),
-        origin: item.origin || 'Extração IA',
-        payingBank: item.payingBank || ownerBank,
-        notes: '',
-        ownerName,
-        ownerCnpj: rawData.ownerCnpj || '',
-        ownerBank
-      }))
-    };
-  } catch (error) {
-    console.error("Erro no GeminiService:", error);
-    throw error;
-  }
+      ownerCnpj,
+      ownerBank
+    }))
+  };
 }
