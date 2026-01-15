@@ -5,8 +5,8 @@ import { Transaction, TransactionType, PaymentMethod, StatementResult } from "..
 
 export async function processStatement(fileBase64: string, mimeType: string): Promise<StatementResult> {
   // Always initialize GoogleGenAI with a named parameter
-  // Fixed spacing to match guideline: {apiKey: process.env.API_KEY}
-  const ai = new GoogleGenAI({apiKey: process.env.API_KEY});
+  // Fixed spacing to strictly match guideline: { apiKey: process.env.API_KEY }
+  const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
   // Utilizando o modelo gemini-3-pro-preview para análise de alta precisão em extratos bancários (Complex Text Task)
   const response = await ai.models.generateContent({
@@ -75,7 +75,7 @@ export async function processStatement(fileBase64: string, mimeType: string): Pr
     }
   });
 
-  // response.text is a getter property, safely access it
+  // response.text is a getter property, safely access it without method call
   const jsonStr = response.text?.trim() ?? "{}";
   const rawData = JSON.parse(jsonStr);
   
