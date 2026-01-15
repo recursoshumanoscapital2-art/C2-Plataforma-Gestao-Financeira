@@ -350,7 +350,13 @@ const App: React.FC = () => {
   const handleAddUser = async (e: React.FormEvent) => {
     e.preventDefault();
     const newUser: UserInfo = {
-      name: newUserName, login: newUserLogin, email: newUserEmail, password: newUserPassword, role: newUserRole, active: true
+      userId: Math.random().toString(36).substring(2, 15) + Math.random().toString(36).substring(2, 15),
+      name: newUserName, 
+      login: newUserLogin, 
+      email: newUserEmail, 
+      password: newUserPassword, 
+      role: newUserRole, 
+      active: true
     };
     const docRef = await addDoc(collection(db, "users"), newUser);
     setUsersList(prev => [...prev, { ...newUser, id: docRef.id }]);
@@ -388,6 +394,14 @@ const App: React.FC = () => {
     navigate('/');
   };
 
+  const handleLogout = () => {
+    sessionStorage.removeItem('isAuthenticated');
+    sessionStorage.removeItem('currentUser');
+    setIsAuthenticated(false);
+    setCurrentUser(null);
+    navigate('/');
+  };
+
   const currentCompanyInfo = useMemo(() => {
     if (!selectedCnpj) return { name: 'Grupo Capital Dois', cnpj: 'Múltiplas Empresas' };
     const first = filteredTransactions.find(t => t.ownerCnpj === selectedCnpj);
@@ -401,7 +415,7 @@ const App: React.FC = () => {
   return (
     <>
       <div className="min-h-screen bg-slate-50 flex print-hidden">
-        <Sidebar currentUser={currentUser} />
+        <Sidebar currentUser={currentUser} onLogout={handleLogout} />
         <div className="flex-1 flex flex-col min-w-0">
           <header className="bg-white border-b border-slate-100 h-16 flex items-center px-6 sticky top-0 z-30 shadow-sm">
             <div className="flex-1">
