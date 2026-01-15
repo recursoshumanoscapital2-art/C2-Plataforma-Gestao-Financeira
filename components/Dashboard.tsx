@@ -16,6 +16,7 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, selectedCnpj, logoU
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const currentOwner = useMemo(() => {
+    // Se não houver transações filtradas, mantém o nome do grupo padrão
     if (!selectedCnpj || transactions.length === 0) {
       return { name: 'Grupo Capital Dois', cnpj: 'Múltiplas Empresas', bank: 'Vários' };
     }
@@ -69,8 +70,6 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, selectedCnpj, logoU
       reader.readAsDataURL(file);
     }
   };
-
-  if (transactions.length === 0) return null;
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
