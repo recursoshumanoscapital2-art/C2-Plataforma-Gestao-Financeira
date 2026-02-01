@@ -329,10 +329,6 @@ const App: React.FC = () => {
 
   const handleSaveManualBalance = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedCnpj) {
-      alert("Por favor, selecione uma empresa específica antes de incluir saldo manual.");
-      return;
-    }
     
     const value = parseFloat(manualBalanceValue.replace(',', '.'));
     if (isNaN(value)) {
@@ -342,7 +338,7 @@ const App: React.FC = () => {
 
     setIsLoading(true);
     try {
-      const currentComp = uniqueCompanies.find(c => c.cnpj === selectedCnpj);
+      const currentComp = selectedCnpj ? uniqueCompanies.find(c => c.cnpj === selectedCnpj) : null;
       const newTransaction: Omit<Transaction, 'id'> = {
         date: `${manualBalanceDate}T12:00:00`,
         description: 'Lançamento de Saldo Manual',
@@ -351,11 +347,11 @@ const App: React.FC = () => {
         counterpartyName: 'Lançamento Manual',
         counterpartyCnpj: '',
         paymentMethod: PaymentMethod.OUTROS,
-        payerName: value >= 0 ? 'Lançamento Manual' : (currentComp?.name || ''),
+        payerName: value >= 0 ? 'Lançamento Manual' : (currentComp?.name || 'Saldo Inicial'),
         origin: 'Manual',
         payingBank: currentComp?.name || 'Manual',
-        ownerName: currentComp?.name || '',
-        ownerCnpj: selectedCnpj,
+        ownerName: currentComp?.name || 'Lançamento Geral',
+        ownerCnpj: selectedCnpj || '',
         ownerBank: 'Manual',
         notes: 'Inclusão manual de saldo'
       };
@@ -506,15 +502,17 @@ const App: React.FC = () => {
             <div className="flex items-center gap-3">
               {location.pathname === '/' && (
                 <>
-                  <button 
-                    onClick={() => setIsManualBalanceModalOpen(true)}
-                    className="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 px-5 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-colors border border-emerald-100"
-                  >
-                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                    </svg>
-                    Saldo Manual
-                  </button>
+                  {currentUser?.role === 'admin' && (
+                    <button 
+                      onClick={() => setIsManualBalanceModalOpen(true)}
+                      className="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 px-5 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-colors border border-emerald-100"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                      </svg>
+                      Saldo Manual
+                    </button>
+                  )}
                   {transactions.length > 0 && (
                     <button 
                       onClick={handleClearAllTransactions}
@@ -816,14 +814,14 @@ const App: React.FC = () => {
         {/* Modal: Incluir Saldo Manual */}
         {isManualBalanceModalOpen && (
           <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-[100]">
-            <div className="bg-white p-10 rounded-[2.5rem] w-full max-md shadow-2xl">
+            <div className="bg-white p-10 rounded-[2.5rem] w-full max-w-md shadow-2xl">
               <h3 className="text-2xl font-black mb-2">Incluir Saldo Manual</h3>
               <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-6">Insira o valor e a data do saldo</p>
               <form onSubmit={handleSaveManualBalance} className="space-y-4">
                 <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-400 uppercase">Empresa Selecionada</label>
+                  <label className="text-[10px] font-black text-slate-400 uppercase">Empresa (Opcional)</label>
                   <div className="w-full p-4 bg-slate-50 border rounded-xl font-black text-sm text-indigo-600">
-                    {selectedCnpj ? uniqueCompanies.find(c => c.cnpj === selectedCnpj)?.name : "Nenhuma empresa selecionada"}
+                    {selectedCnpj ? uniqueCompanies.find(c => c.cnpj === selectedCnpj)?.name : "Geral / Não Especificada"}
                   </div>
                 </div>
                 <div className="space-y-1">
