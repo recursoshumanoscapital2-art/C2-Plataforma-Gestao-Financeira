@@ -1,5 +1,5 @@
 
-import React, { useState, useCallback, useMemo, useEffect } from 'react';
+import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import { Transaction, TransactionType, PaymentMethod } from './types';
 import { processStatement } from './services/geminiService';
@@ -196,6 +196,7 @@ const App: React.FC = () => {
   const [reportDataForPrint, setReportDataForPrint] = useState<{ title: string; data: Transaction[]; type: 'inflow' | 'outflow' | 'all' } | null>(null);
 
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  const interruptRef = useRef(false);
 
   const uniqueCompanies = useMemo(() => {
     return registeredCompanies.filter(c => !c.hidden);
@@ -281,31 +282,63 @@ const App: React.FC = () => {
     if (pendingFiles.length === 0) return;
     setIsLoading(true);
     setError(null);
+    interruptRef.current = false;
     
     try {
+      const allExtractedTransactions: any[] = [];
+      
+      // Fase 1: Análise completa pela IA (100%)
       for (const file of pendingFiles) {
+        if (interruptRef.current) {
+          throw new Error("Importação interrompida pelo usuário.");
+        }
+        
         const base64 = await new Promise<string>((resolve, reject) => {
           const reader = new FileReader();
           reader.onload = (e) => resolve(e.target?.result?.toString().split(',')[1] || "");
           reader.onerror = (e) => reject(new Error("Erro ao ler arquivo"));
           reader.readAsDataURL(file);
         });
+        
         const result = await processStatement(base64, file.type);
-        const addedTransactions: Transaction[] = [];
-        for (const t of result.transactions) {
-          const docRef = await addDoc(collection(db, "transactions"), t);
-          addedTransactions.push({ ...t, id: docRef.id });
-        }
-        setTransactions(prev => [...addedTransactions, ...prev]);
+        allExtractedTransactions.push(...result.transactions);
       }
-      setPendingFiles([]);
-      navigate('/');
+
+      // Fase 2: Envio para o banco de dados (Apenas se 100% da análise concluída e não interrompido)
+      if (interruptRef.current) {
+        throw new Error("Importação interrompida antes do salvamento.");
+      }
+
+      const addedTransactions: Transaction[] = [];
+      for (const t of allExtractedTransactions) {
+        if (interruptRef.current) {
+          throw new Error("Importação interrompida durante o salvamento.");
+        }
+        const docRef = await addDoc(collection(db, "transactions"), t);
+        addedTransactions.push({ ...t, id: docRef.id });
+      }
+
+      if (!interruptRef.current) {
+        setTransactions(prev => [...addedTransactions, ...prev]);
+        setPendingFiles([]);
+        navigate('/');
+        alert("Importação concluída com sucesso!");
+      }
     } catch (err: any) { 
-      setError(err.message); 
-      console.error("Erro no processamento:", err);
-      alert(`Erro no processamento: ${err.message}`);
+      if (err.message.includes("interrompida")) {
+          // Silencia o alerta pois o usuário já resetou a tela manualmente
+          console.log("Processo interrompido com sucesso.");
+      } else {
+          setError(err.message); 
+          console.error("Erro no processamento:", err);
+          alert(`Erro no processamento: ${err.message}`);
+      }
     } finally { 
-      setIsLoading(false); 
+      // Não resetar estados aqui se já foram resetados no clique do botão
+      if (!interruptRef.current) {
+        setIsLoading(false); 
+      }
+      interruptRef.current = false;
     }
   };
 
@@ -631,10 +664,20 @@ const App: React.FC = () => {
                 <div className="max-w-4xl mx-auto">
                   <h2 className="text-2xl font-black mb-8">Importação de Extratos</h2>
                   {isLoading ? (
-                    <div className="text-center py-20 bg-white rounded-[2rem] border border-slate-100 shadow-sm">
+                    <div className="text-center py-20 bg-white rounded-[2rem] border border-slate-100 shadow-sm flex flex-col items-center">
                       <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
                       <p className="font-black text-indigo-600 mb-2">Processando...</p>
                       <p className="text-xs text-slate-400 font-bold uppercase tracking-widest animate-pulse">Aguarde, a IA está analisando os documentos</p>
+                      <button 
+                        onClick={() => { 
+                          interruptRef.current = true;
+                          setIsLoading(false); // Reseta a interface instantaneamente
+                          setPendingFiles([]); // Retorna ao estado inicial da aba
+                        }}
+                        className="mt-10 bg-rose-50 hover:bg-rose-100 text-rose-600 px-8 py-3 rounded-2xl text-xs font-black uppercase tracking-widest transition-all border border-rose-100 shadow-sm"
+                      >
+                        Interromper Importação
+                      </button>
                     </div>
                   ) : pendingFiles.length > 0 ? (
                     <div className="bg-white p-10 rounded-[2.5rem] border border-slate-100 shadow-xl animate-in zoom-in duration-300">
@@ -851,7 +894,7 @@ const App: React.FC = () => {
                   </div>
                   {isAddingUser && (
                     <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-[100]">
-                      <div className="bg-white p-10 rounded-[2.5rem] w-full max-w-md shadow-2xl">
+                      <div className="bg-white p-10 rounded-[2.5rem] w-full max-md shadow-2xl">
                         <h3 className="text-2xl font-black mb-6">Novo Usuário</h3>
                         <form onSubmit={handleAddUser} className="space-y-4">
                           <input required placeholder="Nome Completo" value={newUserName} onChange={e => setNewUserName(e.target.value)} className="w-full p-4 bg-slate-50 border rounded-xl font-bold text-sm" />
@@ -881,7 +924,7 @@ const App: React.FC = () => {
         {/* Modal: Incluir Saldo Manual */}
         {isManualBalanceModalOpen && (
           <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-[100]">
-            <div className="bg-white p-10 rounded-[2.5rem] w-full max-w-md shadow-2xl">
+            <div className="bg-white p-10 rounded-[2.5rem] w-full max-md shadow-2xl">
               <h3 className="text-2xl font-black mb-2">Incluir Saldo Manual</h3>
               <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-6">Insira o valor e a data do saldo</p>
               <form onSubmit={handleSaveManualBalance} className="space-y-4">
