@@ -38,10 +38,10 @@ const Sidebar: React.FC<SidebarProps> = ({ currentUser, onLogout, isCollapsed, o
 
   return (
     <aside className={`${isCollapsed ? 'w-24' : 'w-72'} bg-white border-r border-slate-100 flex flex-col h-screen sticky top-0 z-40 print-hidden transition-all duration-300 ease-in-out relative group`}>
-      {/* Toggle Button */}
+      {/* Toggle Button - Now permanently visible */}
       <button
         onClick={onToggle}
-        className="absolute -right-3 top-20 bg-white border border-slate-200 rounded-full p-1.5 shadow-md text-slate-400 hover:text-indigo-600 hover:border-indigo-200 transition-all z-50 focus:outline-none opacity-0 group-hover:opacity-100"
+        className="absolute -right-3 top-20 bg-white border border-slate-200 rounded-full p-1.5 shadow-md text-slate-400 hover:text-indigo-600 hover:border-indigo-200 transition-all z-50 focus:outline-none"
       >
         <svg xmlns="http://www.w3.org/2000/svg" className={`h-3 w-3 transition-transform duration-300 ${isCollapsed ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
