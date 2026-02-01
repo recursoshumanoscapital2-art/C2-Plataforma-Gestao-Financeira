@@ -195,6 +195,8 @@ const App: React.FC = () => {
   const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
   const [reportDataForPrint, setReportDataForPrint] = useState<{ title: string; data: Transaction[]; type: 'inflow' | 'outflow' | 'all' } | null>(null);
 
+  const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+
   const uniqueCompanies = useMemo(() => {
     return registeredCompanies.filter(c => !c.hidden);
   }, [registeredCompanies]);
@@ -269,15 +271,19 @@ const App: React.FC = () => {
     return result.sort((a, b) => (a.date && b.date) ? new Date(b.date).getTime() - new Date(a.date).getTime() : 0);
   }, [transactions, selectedCnpj, startDate, endDate, searchTerm, columnFilters]);
 
-  const handleFileUpload = useCallback(async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
     if (!files || files.length === 0) return;
+    setPendingFiles(Array.from(files));
+  }, []);
+
+  const handleConfirmImport = async () => {
+    if (pendingFiles.length === 0) return;
     setIsLoading(true);
     setError(null);
-    const fileList = Array.from(files) as File[];
     
     try {
-      for (const file of fileList) {
+      for (const file of pendingFiles) {
         const base64 = await new Promise<string>((resolve, reject) => {
           const reader = new FileReader();
           reader.onload = (e) => resolve(e.target?.result?.toString().split(',')[1] || "");
@@ -292,6 +298,7 @@ const App: React.FC = () => {
         }
         setTransactions(prev => [...addedTransactions, ...prev]);
       }
+      setPendingFiles([]);
       navigate('/');
     } catch (err: any) { 
       setError(err.message); 
@@ -299,9 +306,12 @@ const App: React.FC = () => {
       alert(`Erro no processamento: ${err.message}`);
     } finally { 
       setIsLoading(false); 
-      if (event.target) event.target.value = ''; 
     }
-  }, [navigate]);
+  };
+
+  const handleCancelImport = () => {
+    setPendingFiles([]);
+  };
 
   const handleUpdateTransaction = useCallback(async (id: string, updates: Partial<Transaction>) => {
     try {
@@ -624,10 +634,67 @@ const App: React.FC = () => {
                     <div className="text-center py-20 bg-white rounded-[2rem] border border-slate-100 shadow-sm">
                       <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
                       <p className="font-black text-indigo-600 mb-2">Processando...</p>
+                      <p className="text-xs text-slate-400 font-bold uppercase tracking-widest animate-pulse">Aguarde, a IA está analisando os documentos</p>
+                    </div>
+                  ) : pendingFiles.length > 0 ? (
+                    <div className="bg-white p-10 rounded-[2.5rem] border border-slate-100 shadow-xl animate-in zoom-in duration-300">
+                      <div className="flex justify-between items-end mb-8">
+                        <div>
+                          <h3 className="text-2xl font-black text-slate-900">Conferência de Importação</h3>
+                          <p className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-1">
+                            {pendingFiles.length} {pendingFiles.length === 1 ? 'arquivo selecionado' : 'arquivos selecionados'} para análise
+                          </p>
+                        </div>
+                        <div className="w-12 h-12 bg-indigo-50 rounded-2xl flex items-center justify-center">
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
+                          </svg>
+                        </div>
+                      </div>
+
+                      <div className="max-h-[400px] overflow-y-auto custom-scrollbar mb-10 space-y-3 bg-slate-50 p-4 rounded-2xl border border-slate-100">
+                        {pendingFiles.map((file, idx) => (
+                          <div key={idx} className="flex items-center gap-4 bg-white p-4 rounded-xl border border-slate-100 group hover:border-indigo-200 transition-all">
+                            <div className="w-8 h-8 rounded-lg bg-indigo-100 flex items-center justify-center text-[10px] font-black text-indigo-700">
+                              {idx + 1}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-black text-slate-800 truncate">{file.name}</p>
+                              <p className="text-[10px] text-slate-400 font-bold uppercase">{(file.size / 1024 / 1024).toFixed(2)} MB • {file.type.split('/')[1].toUpperCase()}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="flex gap-4">
+                        <button 
+                          onClick={handleConfirmImport}
+                          className="flex-1 bg-indigo-600 text-white font-black py-5 rounded-2xl text-sm uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 active:scale-[0.98]"
+                        >
+                          Confirmar Importação
+                        </button>
+                        <button 
+                          onClick={handleCancelImport}
+                          className="flex-1 bg-slate-100 text-slate-600 font-black py-5 rounded-2xl text-sm uppercase tracking-widest hover:bg-slate-200 transition-all active:scale-[0.98]"
+                        >
+                          Cancelar
+                        </button>
+                      </div>
                     </div>
                   ) : (
-                    <div className="text-center py-32 bg-white rounded-[3rem] border-2 border-dashed border-slate-200">
-                      <label className="cursor-pointer bg-slate-900 text-white font-black px-10 py-4 rounded-2xl text-sm uppercase tracking-widest hover:bg-black transition-all">Escolher Arquivos<input type="file" className="hidden" accept="image/*,application/pdf" onChange={handleFileUpload} multiple /></label>
+                    <div className="text-center py-32 bg-white rounded-[3rem] border-2 border-dashed border-slate-200 hover:border-indigo-300 transition-all">
+                      <label className="cursor-pointer block">
+                        <div className="w-20 h-20 bg-indigo-50 rounded-full flex items-center justify-center mx-auto mb-6">
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                          </svg>
+                        </div>
+                        <span className="bg-slate-900 text-white font-black px-10 py-4 rounded-2xl text-sm uppercase tracking-widest hover:bg-black transition-all inline-block shadow-lg">
+                          Escolher Arquivos
+                        </span>
+                        <input type="file" className="hidden" accept="image/*,application/pdf" onChange={handleFileSelect} multiple />
+                        <p className="text-slate-400 text-xs font-bold uppercase tracking-widest mt-6">Arraste seus PDFs ou clique para selecionar</p>
+                      </label>
                     </div>
                   )}
                 </div>
