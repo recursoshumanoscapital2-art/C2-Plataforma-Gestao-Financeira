@@ -1,6 +1,7 @@
+
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
-import { Transaction, TransactionType } from './types';
+import { Transaction, TransactionType, PaymentMethod } from './types';
 import { processStatement } from './services/geminiService';
 import Dashboard from './components/Dashboard';
 import TransactionTable from './components/TransactionTable';
@@ -12,7 +13,8 @@ import {
   getDocs, 
   addDoc, 
   updateDoc, 
-  doc
+  doc,
+  deleteDoc
 } from "firebase/firestore";
 
 export interface ColumnFilters {
@@ -90,7 +92,7 @@ const PrintLayout = ({ reportData, companyInfo, logoUrl, dateRange }: { reportDa
             </div>
           )}
           {reportData.type === 'all' && (
-            <div className="summary-card" style={{ backgroundColor: balance >= 0 ? '#f0f9ff' : '#fff1f2', borderColor: balance >= 0 ? '#bae6fd' : '#fecdd3' }}>
+            <div className="summary-card" style={{ backgroundColor: balance >= 0 ? '#f0f9ff' : '#bae6fd', borderColor: balance >= 0 ? '#bae6fd' : '#fecdd3' }}>
               <p>Saldo Líquido</p>
               <h3 style={{ color: balance >= 0 ? '#0369a1' : '#9f1239' }}>R$ {balance.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h3>
             </div>
@@ -144,6 +146,8 @@ const App: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [activeTab, setActiveTab] = useState<'dashboard' | 'history'>('dashboard');
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isDataLoaded, setIsDataLoaded] = useState(false); 
@@ -156,6 +160,11 @@ const App: React.FC = () => {
   const [newCompanyCnpj, setNewCompanyCnpj] = useState('');
   const [newCompanyAltNames, setNewCompanyAltNames] = useState('');
   const [showAddAltNames, setShowAddAltNames] = useState(false);
+
+  // Manual Balance Modal States
+  const [isManualBalanceModalOpen, setIsManualBalanceModalOpen] = useState(false);
+  const [manualBalanceValue, setManualBalanceValue] = useState<string>('');
+  const [manualBalanceDate, setManualBalanceDate] = useState<string>(new Date().toISOString().split('T')[0]);
   
   const [editingCnpj, setEditingCnpj] = useState<string | null>(null);
   const [editNameValue, setEditNameValue] = useState('');
@@ -301,6 +310,70 @@ const App: React.FC = () => {
     } catch (err) { console.error(err); }
   }, []);
 
+  const handleClearAllTransactions = async () => {
+    if (!confirm("AVISO: Isso irá excluir permanentemente todas as transações importadas para que os valores fiquem zerados. Deseja continuar?")) return;
+    setIsLoading(true);
+    try {
+      const transSnapshot = await getDocs(collection(db, "transactions"));
+      const deletePromises = transSnapshot.docs.map(d => deleteDoc(doc(db, "transactions", d.id)));
+      await Promise.all(deletePromises);
+      setTransactions([]);
+      alert("Todos os dados foram limpos com sucesso! Saldos de entrada, saída e saldo líquido agora estão zerados.");
+    } catch (err) {
+      console.error("Erro ao limpar dados:", err);
+      alert("Erro ao tentar limpar os dados.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSaveManualBalance = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedCnpj) {
+      alert("Por favor, selecione uma empresa específica antes de incluir saldo manual.");
+      return;
+    }
+    
+    const value = parseFloat(manualBalanceValue.replace(',', '.'));
+    if (isNaN(value)) {
+      alert("Por favor, insira um valor numérico válido.");
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      const currentComp = uniqueCompanies.find(c => c.cnpj === selectedCnpj);
+      const newTransaction: Omit<Transaction, 'id'> = {
+        date: `${manualBalanceDate}T12:00:00`,
+        description: 'Lançamento de Saldo Manual',
+        amount: Math.abs(value),
+        type: value >= 0 ? TransactionType.INFLOW : TransactionType.OUTFLOW,
+        counterpartyName: 'Lançamento Manual',
+        counterpartyCnpj: '',
+        paymentMethod: PaymentMethod.OUTROS,
+        payerName: value >= 0 ? 'Lançamento Manual' : (currentComp?.name || ''),
+        origin: 'Manual',
+        payingBank: currentComp?.name || 'Manual',
+        ownerName: currentComp?.name || '',
+        ownerCnpj: selectedCnpj,
+        ownerBank: 'Manual',
+        notes: 'Inclusão manual de saldo'
+      };
+
+      const docRef = await addDoc(collection(db, "transactions"), newTransaction);
+      setTransactions(prev => [{ ...newTransaction, id: docRef.id }, ...prev]);
+      
+      setIsManualBalanceModalOpen(false);
+      setManualBalanceValue('');
+      alert("Saldo manual incluído com sucesso!");
+    } catch (err) {
+      console.error("Erro ao salvar saldo manual:", err);
+      alert("Erro ao salvar o lançamento.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleAddCompany = async (e: React.FormEvent) => {
     e.preventDefault();
     const newCompany: CompanyInfo = { 
@@ -418,16 +491,41 @@ const App: React.FC = () => {
 
   return (
     <>
-      <div className="min-h-screen bg-slate-50 flex print-hidden">
-        <Sidebar currentUser={currentUser} onLogout={handleLogout} />
-        <div className="flex-1 flex flex-col min-w-0">
+      <div className="min-h-screen bg-slate-50 flex print-hidden transition-all duration-300">
+        <Sidebar 
+          currentUser={currentUser} 
+          onLogout={handleLogout} 
+          isCollapsed={isSidebarCollapsed}
+          onToggle={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+        />
+        <div className={`flex-1 flex flex-col min-w-0 transition-all duration-300`}>
           <header className="bg-white border-b border-slate-100 h-16 flex items-center px-6 sticky top-0 z-30 shadow-sm">
             <div className="flex-1">
               {location.pathname === '/' && <input type="text" placeholder="Busca global..." className="w-64 p-2.5 bg-slate-50 border rounded-xl text-xs outline-none focus:border-indigo-400" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />}
             </div>
             <div className="flex items-center gap-3">
-              {location.pathname === '/' && transactions.length > 0 && (
+              {location.pathname === '/' && (
                 <>
+                  <button 
+                    onClick={() => setIsManualBalanceModalOpen(true)}
+                    className="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 px-5 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-colors border border-emerald-100"
+                  >
+                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                    </svg>
+                    Saldo Manual
+                  </button>
+                  {transactions.length > 0 && (
+                    <button 
+                      onClick={handleClearAllTransactions}
+                      className="bg-rose-50 hover:bg-rose-100 text-rose-600 px-5 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-colors border border-rose-100"
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                      </svg>
+                      Limpar Tudo
+                    </button>
+                  )}
                   <button 
                     onClick={() => setIsPdfModalOpen(true)}
                     className="bg-slate-100 hover:bg-slate-200 text-slate-600 px-5 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-colors"
@@ -435,12 +533,12 @@ const App: React.FC = () => {
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                     </svg>
-                    Relatórios
+                    Baixar PDF
                   </button>
                   <button 
                     onClick={async () => {
                       if (confirm("Deseja finalizar o dia e salvar os totais?")) {
-                        // ... (lógica de finalizar dia)
+                        // Finalizar dia logic
                       }
                     }} 
                     className="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-2 rounded-xl text-sm font-bold shadow-lg shadow-indigo-100"
@@ -451,36 +549,70 @@ const App: React.FC = () => {
               )}
             </div>
           </header>
-          <main className="flex-1 p-6 overflow-y-auto">
+          <main className="flex-1 p-6 overflow-y-auto custom-scrollbar">
             <Routes>
               <Route path="/" element={
                 <>
-                  {transactions.length > 0 || isDataLoaded ? (
-                    <>
+                  {(transactions.length > 0 || isDataLoaded) ? (
+                    <div className="max-w-[1600px] mx-auto">
                       <div className="flex flex-col lg:flex-row justify-between items-start gap-6 mb-8">
                         <div className="flex flex-col gap-1">
-                          <h2 className="text-2xl font-black text-slate-900">Gestor Financeiro</h2>
-                          <p className="text-sm text-slate-500 font-medium">Análise via Inteligência Artificial</p>
+                          <h2 className="text-3xl font-black text-slate-900 tracking-tight">Gestor Financeiro</h2>
+                          <p className="text-sm text-slate-500 font-medium">Análise avançada via Inteligência Artificial</p>
                         </div>
                         <div className="flex flex-col sm:flex-row items-end sm:items-center gap-4 w-full lg:w-auto">
-                          <div className="flex items-center gap-2 bg-white p-1.5 rounded-2xl border border-slate-100 shadow-sm">
-                            <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="text-[10px] font-black bg-indigo-50 text-indigo-700 rounded-lg px-2 py-1 outline-none" />
-                            <span className="text-[10px] text-slate-400 font-black">até</span>
-                            <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="text-[10px] font-black bg-indigo-50 text-indigo-700 rounded-lg px-2 py-1 outline-none" />
+                          <div className="flex items-center gap-2 bg-white p-2 rounded-2xl border border-slate-100 shadow-sm">
+                            <input type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} className="text-[10px] font-black bg-indigo-50 text-indigo-700 rounded-lg px-2 py-1.5 outline-none border border-indigo-100" />
+                            <span className="text-[10px] text-slate-400 font-black uppercase tracking-tighter">até</span>
+                            <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="text-[10px] font-black bg-indigo-50 text-indigo-700 rounded-lg px-2 py-1.5 outline-none border border-indigo-100" />
                           </div>
-                          <select className="bg-white p-2 rounded-xl text-[10px] font-black border border-slate-100" value={selectedCnpj || ""} onChange={(e) => setSelectedCnpj(e.target.value || null)}>
+                          <select className="bg-white p-2.5 rounded-2xl text-[10px] font-black border border-slate-100 shadow-sm outline-none focus:border-indigo-300" value={selectedCnpj || ""} onChange={(e) => setSelectedCnpj(e.target.value || null)}>
                             <option value="">Grupo Capital Dois</option>
                             {uniqueCompanies.map(c => <option key={c.cnpj || c.id} value={c.cnpj}>{c.name}</option>)}
                           </select>
                         </div>
                       </div>
-                      <div className="space-y-10">
-                        <Dashboard transactions={filteredTransactions} selectedCnpj={selectedCnpj} />
-                        <TransactionTable transactions={filteredTransactions} allTransactions={transactions} onUpdateTransaction={handleUpdateTransaction} selectedCnpj={selectedCnpj} columnFilters={columnFilters} onColumnFilterChange={(f, v) => setColumnFilters(p => ({ ...p, [f]: v }))} />
+
+                      {/* Botão de Navegação entre Sessões */}
+                      <div className="flex items-center gap-1 bg-white p-1 rounded-2xl border border-slate-100 shadow-sm mb-12 w-fit">
+                        <button 
+                          onClick={() => setActiveTab('dashboard')}
+                          className={`px-8 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'dashboard' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-100' : 'text-slate-400 hover:text-slate-600'}`}
+                        >
+                          Dashboard
+                        </button>
+                        <button 
+                          onClick={() => setActiveTab('history')}
+                          className={`px-8 py-3 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === 'history' ? 'bg-indigo-600 text-white shadow-lg shadow-indigo-100' : 'text-slate-400 hover:text-slate-600'}`}
+                        >
+                          Histórico Detalhado
+                        </button>
                       </div>
-                    </>
+
+                      <div className="space-y-16">
+                        {activeTab === 'dashboard' ? (
+                          <section id="dashboard-summary" className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+                            <div className="flex items-center gap-4 mb-8">
+                              <div className="h-px flex-1 bg-slate-100"></div>
+                              <h3 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] px-4">Sessão: Dashboard</h3>
+                              <div className="h-px flex-1 bg-slate-100"></div>
+                            </div>
+                            <Dashboard transactions={filteredTransactions} selectedCnpj={selectedCnpj} />
+                          </section>
+                        ) : (
+                          <section id="detailed-history" className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+                            <div className="flex items-center gap-4 mb-8">
+                              <div className="h-px flex-1 bg-slate-100"></div>
+                              <h3 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] px-4">Sessão: Histórico Detalhado</h3>
+                              <div className="h-px flex-1 bg-slate-100"></div>
+                            </div>
+                            <TransactionTable transactions={filteredTransactions} allTransactions={transactions} onUpdateTransaction={handleUpdateTransaction} selectedCnpj={selectedCnpj} columnFilters={columnFilters} onColumnFilterChange={(f, v) => setColumnFilters(p => ({ ...p, [f]: v }))} />
+                          </section>
+                        )}
+                      </div>
+                    </div>
                   ) : (
-                    <div className="text-center py-32 bg-white rounded-[3rem] border border-slate-100">
+                    <div className="text-center py-32 bg-white rounded-[3rem] border border-slate-100 shadow-sm">
                       <h2 className="text-3xl font-black mb-10 text-slate-900">Bem-vindo ao C2 Gestao Financeira</h2>
                       <button onClick={() => navigate('/import')} className="bg-indigo-600 text-white font-black px-10 py-4 rounded-2xl text-sm uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100">Importar Extratos</button>
                     </div>
@@ -503,7 +635,7 @@ const App: React.FC = () => {
                 </div>
               } />
               <Route path="/companies" element={
-                <div className="bg-white p-12 rounded-[3rem] border border-slate-100">
+                <div className="bg-white p-12 rounded-[3rem] border border-slate-100 shadow-sm">
                   <div className="flex justify-between items-center mb-12"><h2 className="text-2xl font-black">Empresas</h2><button onClick={() => setIsAddingCompany(true)} className="bg-indigo-600 text-white font-black px-6 py-3 rounded-xl text-xs uppercase">Cadastrar</button></div>
                   <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
                     {uniqueCompanies.map(c => {
@@ -591,7 +723,7 @@ const App: React.FC = () => {
                 </div>
               } />
               <Route path="/users" element={
-                <div className="bg-white p-12 rounded-[3rem] border border-slate-100">
+                <div className="bg-white p-12 rounded-[3rem] border border-slate-100 shadow-sm">
                   <div className="flex justify-between items-center mb-12">
                     <h2 className="text-2xl font-black">Usuários</h2>
                     <button onClick={() => setIsAddingUser(true)} className="bg-indigo-600 text-white font-black px-6 py-3 rounded-xl text-xs uppercase">Criar Usuário</button>
@@ -680,6 +812,54 @@ const App: React.FC = () => {
             </Routes>
           </main>
         </div>
+
+        {/* Modal: Incluir Saldo Manual */}
+        {isManualBalanceModalOpen && (
+          <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-[100]">
+            <div className="bg-white p-10 rounded-[2.5rem] w-full max-md shadow-2xl">
+              <h3 className="text-2xl font-black mb-2">Incluir Saldo Manual</h3>
+              <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-6">Insira o valor e a data do saldo</p>
+              <form onSubmit={handleSaveManualBalance} className="space-y-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-slate-400 uppercase">Empresa Selecionada</label>
+                  <div className="w-full p-4 bg-slate-50 border rounded-xl font-black text-sm text-indigo-600">
+                    {selectedCnpj ? uniqueCompanies.find(c => c.cnpj === selectedCnpj)?.name : "Nenhuma empresa selecionada"}
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-slate-400 uppercase">Valor (R$)</label>
+                  <input 
+                    required 
+                    type="text"
+                    placeholder="Ex: 5000,00" 
+                    value={manualBalanceValue} 
+                    onChange={e => setManualBalanceValue(e.target.value)} 
+                    className="w-full p-4 bg-slate-50 border rounded-xl font-bold text-sm focus:ring-2 focus:ring-indigo-400 outline-none transition-all" 
+                  />
+                  <p className="text-[9px] text-slate-400 font-medium">Use sinal de menos (-) para saídas.</p>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-slate-400 uppercase">Data do Lançamento</label>
+                  <input 
+                    required 
+                    type="date"
+                    value={manualBalanceDate} 
+                    onChange={e => setManualBalanceDate(e.target.value)} 
+                    className="w-full p-4 bg-slate-50 border rounded-xl font-bold text-sm focus:ring-2 focus:ring-indigo-400 outline-none transition-all" 
+                  />
+                </div>
+                <div className="flex gap-3 pt-6">
+                  <button type="submit" className="flex-1 bg-indigo-600 text-white py-4 rounded-xl font-black uppercase text-xs hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100">
+                    Salvar Lançamento
+                  </button>
+                  <button type="button" onClick={() => setIsManualBalanceModalOpen(false)} className="flex-1 bg-slate-100 py-4 rounded-xl font-black uppercase text-xs hover:bg-slate-200 transition-all">
+                    Cancelar
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
 
         {isPdfModalOpen && (
           <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-[100]">
