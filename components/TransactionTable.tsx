@@ -24,6 +24,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
   const [tempValue, setTempValue] = useState("");
   const [activeFilter, setActiveFilter] = useState<string | null>(null);
   const filterRef = useRef<HTMLDivElement>(null);
+  const dateInputRef = useRef<HTMLInputElement>(null);
 
   const startEditing = (id: string, field: keyof Transaction, currentVal: string) => {
     setEditingCell({ id, field });
@@ -91,20 +92,37 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
               <div className="space-y-2">
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Filtrar por Data</p>
                 <input 
+                  ref={dateInputRef}
+                  key={columnFilters.date}
                   type="date" 
                   autoFocus
                   className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2 py-2 text-xs outline-none focus:border-indigo-400 font-bold text-slate-700"
-                  value={columnFilters.date}
-                  onChange={(e) => onColumnFilterChange('date', e.target.value)}
+                  defaultValue={columnFilters.date}
                 />
-                {columnFilters.date && (
-                  <button 
-                    onClick={() => { onColumnFilterChange('date', ''); setActiveFilter(null); }}
-                    className="text-[9px] text-rose-500 font-bold hover:underline"
+                <div className="flex items-center gap-2 mt-2">
+                  <button
+                    onClick={() => {
+                      if (dateInputRef.current) {
+                        onColumnFilterChange('date', dateInputRef.current.value);
+                      }
+                      setActiveFilter(null);
+                    }}
+                    className="flex-1 bg-indigo-600 text-white rounded-lg py-1.5 text-[10px] font-bold uppercase hover:bg-indigo-700"
                   >
-                    Limpar Filtro
+                    Confirmar
                   </button>
-                )}
+                  {columnFilters.date && (
+                    <button 
+                      onClick={() => { 
+                        onColumnFilterChange('date', ''); 
+                        setActiveFilter(null); 
+                      }}
+                      className="text-[9px] text-rose-500 font-bold hover:underline"
+                    >
+                      Limpar
+                    </button>
+                  )}
+                </div>
               </div>
             ) : type === 'select' ? (
               <div className="max-h-60 overflow-y-auto custom-scrollbar space-y-1">
