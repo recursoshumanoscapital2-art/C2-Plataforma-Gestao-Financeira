@@ -1,7 +1,9 @@
 
 export enum TransactionType {
   INFLOW = 'entrada',
-  OUTFLOW = 'saída'
+  OUTFLOW = 'saída',
+  MANUAL = 'saldo manual',
+  GROUP = 'grupo'
 }
 
 export enum PaymentMethod {
