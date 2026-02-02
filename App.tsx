@@ -61,6 +61,34 @@ const PrintLayout = ({ reportData, companyInfo, logoUrl, dateRange }: { reportDa
     }, { totalInflow: 0, totalOutflow: 0, totalManual: 0 });
   }, [reportData.data]);
 
+  const companySummaries = useMemo(() => {
+    const groups: Record<string, {
+      name: string;
+      total: number;
+      banks: Record<string, number>;
+    }> = {};
+
+    reportData.data.forEach(t => {
+      const comp = t.ownerName;
+      const bank = t.type === TransactionType.INFLOW ? t.payingBank : t.ownerBank;
+      
+      if (!groups[comp]) {
+        groups[comp] = { name: comp, total: 0, banks: {} };
+      }
+
+      const val = t.amount;
+      let effect = 0;
+      if (t.type === TransactionType.INFLOW) effect = val;
+      else if (t.type === TransactionType.OUTFLOW) effect = -val;
+      else if (t.type === TransactionType.MANUAL) effect = val;
+
+      groups[comp].total += effect;
+      groups[comp].banks[bank] = (groups[comp].banks[bank] || 0) + effect;
+    });
+
+    return Object.values(groups).sort((a, b) => a.name.localeCompare(b.name));
+  }, [reportData.data]);
+
   // Saldo Líquido: Saldo Manual (ponto de partida) + Entradas - Saídas
   const balance = summary.totalManual + summary.totalInflow - summary.totalOutflow;
 
@@ -137,6 +165,43 @@ const PrintLayout = ({ reportData, companyInfo, logoUrl, dateRange }: { reportDa
             ))}
           </tbody>
         </table>
+
+        {reportData.type === 'all' && (
+          <section className="report-company-summaries" style={{ marginTop: '40px', pageBreakInside: 'avoid' }}>
+            <h3 style={{ fontSize: '14pt', fontWeight: 700, marginBottom: '20px', borderBottom: '2px solid #f1f5f9', paddingBottom: '8px', color: '#1e293b' }}>
+              Saldo Líquido por Empresa e Banco
+            </h3>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '20px' }}>
+              {companySummaries.map(group => (
+                <div key={group.name} style={{ border: '1px solid #e2e8f0', borderRadius: '16px', padding: '20px', backgroundColor: '#ffffff', boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1)' }}>
+                  <div style={{ marginBottom: '12px' }}>
+                    <p style={{ fontSize: '7.5pt', color: '#94a3b8', fontWeight: 800, margin: '0 0 4px 0', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Identificação</p>
+                    <h4 style={{ fontSize: '11pt', fontWeight: 700, margin: 0, color: '#0f172a', lineHeight: 1.2 }}>{group.name}</h4>
+                  </div>
+                  <div style={{ borderBottom: '1px dashed #e2e8f0', paddingBottom: '12px', marginBottom: '12px' }}>
+                    <p style={{ fontSize: '7.5pt', color: '#94a3b8', fontWeight: 800, margin: '0 0 4px 0', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Saldo Líquido Total</p>
+                    <p style={{ fontSize: '15pt', fontWeight: 900, margin: 0, color: group.total >= 0 ? '#15803d' : '#be123c' }}>
+                      R$ {group.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    </p>
+                  </div>
+                  <div>
+                    <p style={{ fontSize: '7.5pt', color: '#94a3b8', fontWeight: 800, margin: '0 0 8px 0', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Detalhamento Bancário</p>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                      {Object.entries(group.banks).map(([bank, balance]) => (
+                        <div key={bank} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9pt', padding: '4px 0', borderBottom: '1px solid #f8fafc' }}>
+                          <span style={{ color: '#475569', fontWeight: 500 }}>{bank}</span>
+                          <span style={{ fontWeight: 700, color: balance >= 0 ? '#166534' : '#9f1239' }}>
+                            R$ {balance.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </section>
+        )}
       </main>
 
       <footer className="report-footer">
