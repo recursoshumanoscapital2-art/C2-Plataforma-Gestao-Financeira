@@ -569,20 +569,64 @@ const App: React.FC = () => {
         throw new Error("Importação interrompida antes do salvamento.");
       }
 
-      const addedTransactions: Transaction[] = [];
-      for (const t of allExtractedTransactions) {
-        if (interruptRef.current) {
-          throw new Error("Importação interrompida durante o salvamento.");
+      // LÓGICA DE DESDUPLICAÇÃO
+      // Filtramos transações que já existem no banco de dados ou que já foram extraídas no lote atual
+      const uniqueToSave: Transaction[] = [];
+      const normalize = (s: string) => (s || '').toLowerCase().trim().replace(/\D/g, '');
+      const cleanStr = (s: string) => (s || '').toLowerCase().trim();
+
+      for (const newT of allExtractedTransactions) {
+        const newDate = newT.date.split('T')[0];
+        const newAmt = Math.abs(newT.amount).toFixed(2);
+        const newBank = cleanStr(newT.ownerBank);
+        const newParty = cleanStr(newT.counterpartyName);
+        const newCompCnpj = normalize(newT.ownerCnpj);
+        const newCompName = cleanStr(newT.ownerName);
+
+        // Verifica se existe duplicata no banco de dados
+        const isDuplicateInDb = transactions.some(ext => {
+          const extDate = ext.date.split('T')[0];
+          const extAmt = Math.abs(ext.amount).toFixed(2);
+          const extBank = cleanStr(ext.ownerBank);
+          const extParty = cleanStr(ext.counterpartyName);
+          const extCompCnpj = normalize(ext.ownerCnpj);
+          const extCompName = cleanStr(ext.ownerName);
+
+          const dateMatch = extDate === newDate;
+          const amtMatch = extAmt === newAmt;
+          const bankMatch = extBank === newBank;
+          const partyMatch = extParty === newParty;
+          const compMatch = extCompCnpj && newCompCnpj 
+            ? extCompCnpj === newCompCnpj 
+            : extCompName === newCompName;
+
+          return dateMatch && amtMatch && bankMatch && partyMatch && compMatch;
+        });
+
+        // Verifica se existe duplicata já processada neste lote
+        const isDuplicateInBatch = uniqueToSave.some(ext => {
+          const extDate = ext.date.split('T')[0];
+          const extAmt = Math.abs(ext.amount).toFixed(2);
+          const extBank = cleanStr(ext.ownerBank);
+          const extParty = cleanStr(ext.counterpartyName);
+          const extCompCnpj = normalize(ext.ownerCnpj);
+          const extCompName = cleanStr(ext.ownerName);
+
+          return extDate === newDate && extAmt === newAmt && extBank === newBank && extParty === newParty && (extCompCnpj && newCompCnpj ? extCompCnpj === newCompCnpj : extCompName === newCompName);
+        });
+
+        if (!isDuplicateInDb && !isDuplicateInBatch) {
+          const docRef = await addDoc(collection(db, "transactions"), newT);
+          uniqueToSave.push({ ...newT, id: docRef.id });
         }
-        const docRef = await addDoc(collection(db, "transactions"), t);
-        addedTransactions.push({ ...t, id: docRef.id });
       }
 
       if (!interruptRef.current) {
-        setTransactions(prev => [...addedTransactions, ...prev]);
+        setTransactions(prev => [...uniqueToSave, ...prev]);
         setPendingFiles([]);
         navigate('/');
-        alert("Importação concluída com sucesso!");
+        const skipped = allExtractedTransactions.length - uniqueToSave.length;
+        alert(`Importação concluída! ${uniqueToSave.length} transações salvas.${skipped > 0 ? ` ${skipped} transações foram ignoradas por serem duplicatas.` : ''}`);
       }
     } catch (err: any) { 
       if (err.message.includes("interrompida")) {
@@ -1160,7 +1204,7 @@ const App: React.FC = () => {
                   </div>
                   {isAddingCompany && (
                     <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-[100]">
-                      <div className="bg-white p-10 rounded-[2.5rem] w-full max-w-md shadow-2xl">
+                      <div className="bg-white p-10 rounded-[2.5rem] w-full max-md shadow-2xl">
                         <div className="flex justify-between items-center mb-6">
                             <h3 className="text-2xl font-black">Nova Empresa</h3>
                             <div className="h-10 w-10 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-600">
