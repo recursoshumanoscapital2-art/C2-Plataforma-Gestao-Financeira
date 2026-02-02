@@ -58,7 +58,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
       owners: Array.from(new Set(allTransactions.map(t => t.ownerName))).sort(),
       banks: Array.from(new Set(allTransactions.map(t => t.ownerBank))).sort(),
       origins: Array.from(new Set(allTransactions.map(t => t.origin))).sort(),
-      counterparties: Array.from(new Set(allTransactions.filter(t => t.type === TransactionType.OUTFLOW).map(t => t.counterpartyName))).sort(),
+      counterparties: Array.from(new Set(allTransactions.filter(t => t.type === TransactionType.OUTFLOW || t.type === TransactionType.GROUP).map(t => t.counterpartyName))).sort(),
     };
   }, [allTransactions]);
 
@@ -220,7 +220,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                 <HeaderCell label="Data" field="date" type="date" />
                 <HeaderCell label="Empresa" field="ownerName" options={uniqueData.owners} />
                 <HeaderCell label="Banco" field="payingBank" options={uniqueData.banks} />
-                <HeaderCell label="Tipo" field="type" options={['entrada', 'saída']} />
+                <HeaderCell label="Tipo" field="type" options={['entrada', 'saída', 'saldo manual', 'grupo']} />
                 <HeaderCell label="Origem" field="origin" options={uniqueData.origins} />
                 <HeaderCell label="Favorecido" field="counterpartyName" options={uniqueData.counterparties} />
                 <HeaderCell label="Valor" field="amount" type="text" align="right" />
@@ -248,14 +248,38 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                     </div>
                   </td>
 
-                  <td className="px-6 py-4 text-center">
-                    <span className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase inline-block border ${
-                      t.type === TransactionType.INFLOW 
-                      ? 'bg-emerald-50 text-emerald-700 border-emerald-100' 
-                      : 'bg-rose-50 text-rose-700 border-rose-100'
-                    }`}>
-                      {t.type}
-                    </span>
+                  <td className="px-6 py-4 text-center relative">
+                    {editingCell?.id === t.id && editingCell.field === 'type' ? (
+                      <select
+                        autoFocus
+                        className="w-full border-2 border-indigo-400 rounded-lg px-2 py-1 text-[11px] outline-none shadow-sm appearance-none bg-white"
+                        value={tempValue}
+                        onChange={(e) => {
+                          onUpdateTransaction(t.id, { type: e.target.value as TransactionType });
+                          setEditingCell(null);
+                        }}
+                        onBlur={() => setEditingCell(null)}
+                      >
+                        <option value={TransactionType.INFLOW}>entrada</option>
+                        <option value={TransactionType.OUTFLOW}>saída</option>
+                        <option value={TransactionType.GROUP}>grupo</option>
+                        <option value={TransactionType.MANUAL}>saldo manual</option>
+                      </select>
+                    ) : (
+                      <span 
+                        onClick={() => startEditing(t.id, 'type', t.type)}
+                        className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase inline-block border cursor-pointer transition-all hover:scale-105 ${
+                        t.type === TransactionType.INFLOW 
+                        ? 'bg-emerald-50 text-emerald-700 border-emerald-100' 
+                        : t.type === TransactionType.OUTFLOW 
+                        ? 'bg-rose-50 text-rose-700 border-rose-100'
+                        : t.type === TransactionType.GROUP
+                        ? 'bg-purple-50 text-purple-700 border-purple-200'
+                        : 'bg-slate-50 text-slate-700 border-slate-200'
+                      }`}>
+                        {t.type}
+                      </span>
+                    )}
                   </td>
 
                   <td className="px-6 py-4">
@@ -290,23 +314,30 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                       />
                     ) : (
                       <div 
-                        onClick={() => t.type === TransactionType.OUTFLOW ? startEditing(t.id, 'counterpartyName', t.counterpartyName) : null}
-                        className={`cursor-pointer group/item ${t.type !== TransactionType.OUTFLOW ? 'cursor-default pointer-events-none' : ''}`}
+                        onClick={() => startEditing(t.id, 'counterpartyName', t.counterpartyName)}
+                        className="cursor-pointer group/item flex items-center gap-2"
                       >
-                        <div className="text-[12px] font-black text-slate-900 truncate border-b border-transparent group-hover/item:border-indigo-200 leading-tight inline-block">
-                          {t.type === TransactionType.OUTFLOW ? t.counterpartyName : '-'}
+                        <div className="flex-1 min-w-0">
+                          <div className="text-[12px] font-black text-slate-900 truncate border-b border-transparent group-hover/item:border-indigo-200 leading-tight inline-block mr-1">
+                            {t.counterpartyName || '-'}
+                          </div>
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 text-slate-300 group-hover/item:text-indigo-400 inline transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                          </svg>
+                          {t.type !== TransactionType.INFLOW && <div className="text-[9px] text-slate-400 truncate mt-0.5 opacity-80">{t.description}</div>}
                         </div>
-                        {t.type === TransactionType.OUTFLOW && <div className="text-[9px] text-slate-400 truncate mt-0.5 opacity-80">{t.description}</div>}
                       </div>
                     )}
                   </td>
 
                   <td className={`px-6 py-4 text-sm font-black text-right whitespace-nowrap ${
-                    t.type === TransactionType.INFLOW ? 'text-emerald-600' : 'text-slate-900'
+                    t.type === TransactionType.GROUP ? 'text-purple-600' :
+                    t.type === TransactionType.INFLOW ? 'text-emerald-600' : 
+                    t.type === TransactionType.OUTFLOW ? 'text-rose-600' : 'text-indigo-600'
                   }`}>
                     <span className="text-[10px] text-slate-400 mr-1 font-bold">R$</span>
                     {t.type === TransactionType.OUTFLOW ? '-' : ''} 
-                    {t.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    {Math.abs(t.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                   </td>
 
                   <td className="px-6 py-4">
