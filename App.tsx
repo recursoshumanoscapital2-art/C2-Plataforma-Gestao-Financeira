@@ -13,7 +13,8 @@ import {
   addDoc, 
   updateDoc, 
   doc,
-  deleteDoc
+  deleteDoc,
+  onSnapshot
 } from "firebase/firestore";
 
 // The environment provides global types for window.aistudio and AIStudio.
@@ -356,30 +357,39 @@ const App: React.FC = () => {
   }, [reportDataForPrint]);
 
   useEffect(() => {
+    if (!isAuthenticated) return;
+
+    setIsLoading(true);
+
+    // Listener em tempo real para as transações no Firebase
+    const unsubscribeTrans = onSnapshot(collection(db, "transactions"), (snapshot) => {
+      const transList = snapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })) as Transaction[];
+      setTransactions(transList);
+      setIsLoading(false);
+      setIsDataLoaded(true);
+    }, (err) => {
+      console.error("Erro ao sincronizar transações:", err);
+      setIsLoading(false);
+    });
+
     const fetchData = async () => {
-      setIsLoading(true);
       try {
-        const [transSnapshot, compSnapshot, usersSnapshot] = await Promise.all([
-          getDocs(collection(db, "transactions")),
+        const [compSnapshot, usersSnapshot] = await Promise.all([
           getDocs(collection(db, "companies")),
           getDocs(collection(db, "users"))
         ]);
-        const transList = transSnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })) as Transaction[];
-        setTransactions(transList);
         const compList = compSnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })) as CompanyInfo[];
         setRegisteredCompanies(compList);
         const usersListData = usersSnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })) as UserInfo[];
         setUsersList(usersListData);
-        setIsDataLoaded(true); 
       } catch (err) {
         console.error("Erro ao carregar dados do Firebase:", err);
-      } finally {
-        setIsLoading(false);
       }
     };
-    if (isAuthenticated) {
-      fetchData();
-    }
+    
+    fetchData();
+
+    return () => unsubscribeTrans();
   }, [isAuthenticated]);
 
   const handleOpenSelectKey = async () => {
@@ -601,11 +611,14 @@ const App: React.FC = () => {
     setPendingFiles([]);
   };
 
-  const handleUpdateTransaction = useCallback(async (id: string, updates: Partial<Transaction>) => {
-    try {
-      await updateDoc(doc(db, "transactions", id), updates);
-      setTransactions(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t));
-    } catch (err) { console.error(err); }
+  const handleUpdateTransaction = useCallback((id: string, updates: Partial<Transaction>) => {
+    // Atualização otimista: Reflete na UI instantaneamente
+    setTransactions(prev => prev.map(t => t.id === id ? { ...t, ...updates } : t));
+    
+    // Atualização remota em background
+    updateDoc(doc(db, "transactions", id), updates).catch(err => {
+      console.error("Erro ao persistir edição:", err);
+    });
   }, []);
 
   const handleClearAllTransactions = async () => {
