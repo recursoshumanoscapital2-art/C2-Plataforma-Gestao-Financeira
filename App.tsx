@@ -69,11 +69,15 @@ const PrintLayout = ({ reportData, companyInfo, logoUrl, dateRange }: { reportDa
     }> = {};
 
     reportData.data.forEach(t => {
-      const comp = t.ownerName;
+      // Normalização pelo começo do nome para evitar duplicados por variações como "Ltda"
+      const rawName = t.ownerName.trim();
+      const baseName = rawName.split('  ')[0].split(' LTDA')[0].split(' ME')[0].split(' EIRELI')[0].trim();
+      
+      const compKey = baseName.toUpperCase();
       const bank = t.type === TransactionType.INFLOW ? t.payingBank : t.ownerBank;
       
-      if (!groups[comp]) {
-        groups[comp] = { name: comp, total: 0, banks: {} };
+      if (!groups[compKey]) {
+        groups[compKey] = { name: baseName, total: 0, banks: {} };
       }
 
       const val = t.amount;
@@ -82,14 +86,14 @@ const PrintLayout = ({ reportData, companyInfo, logoUrl, dateRange }: { reportDa
       else if (t.type === TransactionType.OUTFLOW) effect = -val;
       else if (t.type === TransactionType.MANUAL) effect = val;
 
-      groups[comp].total += effect;
-      groups[comp].banks[bank] = (groups[comp].banks[bank] || 0) + effect;
+      groups[compKey].total += effect;
+      groups[compKey].banks[bank] = (groups[compKey].banks[bank] || 0) + effect;
     });
 
     return Object.values(groups).sort((a, b) => a.name.localeCompare(b.name));
   }, [reportData.data]);
 
-  // Saldo Líquido: Saldo Manual (ponto de partida) + Entradas - Saídas
+  // Saldo Líquido Geral: Saldo Manual + Entradas - Saídas
   const balance = summary.totalManual + summary.totalInflow - summary.totalOutflow;
 
   return (
@@ -99,13 +103,13 @@ const PrintLayout = ({ reportData, companyInfo, logoUrl, dateRange }: { reportDa
           {logoUrl && <img src={logoUrl} alt="Logo da Empresa" />}
           <div>
             <h1 className="text-xl font-bold">{companyInfo.name}</h1>
-            <p className="text-xs text-slate-500">{companyInfo.cnpj}</p>
+            <p className="text-[9px] text-slate-500 font-bold uppercase tracking-wider">{companyInfo.cnpj}</p>
           </div>
         </div>
         <div className="text-right">
           <h2 className="text-lg font-bold">{reportData.title}</h2>
-          <p className="text-xs text-slate-500">
-            Período: {dateRange.start ? new Date(dateRange.start + 'T00:00:00').toLocaleDateString('pt-BR') : 'Início'} a {dateRange.end ? new Date(dateRange.end + 'T00:00:00').toLocaleDateString('pt-BR') : 'Fim'}
+          <p className="text-[9px] text-slate-500 font-bold">
+            {dateRange.start ? new Date(dateRange.start + 'T00:00:00').toLocaleDateString('pt-BR') : 'Início'} a {dateRange.end ? new Date(dateRange.end + 'T00:00:00').toLocaleDateString('pt-BR') : 'Fim'}
           </p>
         </div>
       </header>
@@ -126,7 +130,7 @@ const PrintLayout = ({ reportData, companyInfo, logoUrl, dateRange }: { reportDa
           )}
           {reportData.type === 'all' && (
             <div className="summary-card" style={{ backgroundColor: balance >= 0 ? '#f0f9ff' : '#bae6fd', borderColor: balance >= 0 ? '#bae6fd' : '#fecdd3' }}>
-              <p>Saldo Líquido</p>
+              <p>Saldo Líquido Geral</p>
               <h3 style={{ color: balance >= 0 ? '#0369a1' : '#9f1239' }}>R$ {balance.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h3>
             </div>
           )}
@@ -147,51 +151,51 @@ const PrintLayout = ({ reportData, companyInfo, logoUrl, dateRange }: { reportDa
           <tbody>
             {reportData.data.map(t => (
               <tr key={t.id}>
-                <td>{new Date(t.date).toLocaleDateString('pt-BR')}</td>
+                <td style={{ whiteSpace: 'nowrap' }}>{new Date(t.date).toLocaleDateString('pt-BR')}</td>
                 <td>{t.ownerName}</td>
                 <td>{t.type === TransactionType.INFLOW ? t.payingBank : t.ownerBank}</td>
                 <td>{t.origin}</td>
                 <td>{t.counterpartyName || '-'}</td>
                 <td style={{ 
                   textAlign: 'right', 
-                  fontWeight: 600, 
+                  fontWeight: 700, 
                   color: t.type === TransactionType.INFLOW ? '#15803d' : 
                          t.type === TransactionType.OUTFLOW ? '#be123c' : '#4f46e5' 
                 }}>
                   {t.type === TransactionType.OUTFLOW ? '-' : ''}{Math.abs(t.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                 </td>
-                <td>{t.notes}</td>
+                <td style={{ fontSize: '7pt', color: '#64748b' }}>{t.notes}</td>
               </tr>
             ))}
           </tbody>
         </table>
 
         {reportData.type === 'all' && (
-          <section className="report-company-summaries" style={{ marginTop: '40px', pageBreakInside: 'avoid' }}>
-            <h3 style={{ fontSize: '14pt', fontWeight: 700, marginBottom: '20px', borderBottom: '2px solid #f1f5f9', paddingBottom: '8px', color: '#1e293b' }}>
-              Saldo Líquido por Empresa e Banco
+          <section className="report-company-summaries" style={{ marginTop: '30px' }}>
+            <h3 style={{ fontSize: '12pt', fontWeight: 800, marginBottom: '15px', color: '#1e293b', borderLeft: '4px solid #4f46e5', paddingLeft: '10px' }}>
+              RESUMO DE SALDO LÍQUIDO POR EMPRESA
             </h3>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '20px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '15px' }}>
               {companySummaries.map(group => (
-                <div key={group.name} style={{ border: '1px solid #e2e8f0', borderRadius: '16px', padding: '20px', backgroundColor: '#ffffff', boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.1)' }}>
-                  <div style={{ marginBottom: '12px' }}>
-                    <p style={{ fontSize: '7.5pt', color: '#94a3b8', fontWeight: 800, margin: '0 0 4px 0', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Identificação</p>
-                    <h4 style={{ fontSize: '11pt', fontWeight: 700, margin: 0, color: '#0f172a', lineHeight: 1.2 }}>{group.name}</h4>
+                <div key={group.name} className="company-summary-card" style={{ border: '1px solid #e2e8f0', borderRadius: '12px', padding: '15px', backgroundColor: '#f8fafc' }}>
+                  <div style={{ marginBottom: '10px' }}>
+                    <p style={{ fontSize: '7pt', color: '#64748b', fontWeight: 800, margin: '0 0 2px 0', textTransform: 'uppercase' }}>Empresa</p>
+                    <h4 style={{ fontSize: '10pt', fontWeight: 800, margin: 0, color: '#0f172a' }}>{group.name}</h4>
                   </div>
-                  <div style={{ borderBottom: '1px dashed #e2e8f0', paddingBottom: '12px', marginBottom: '12px' }}>
-                    <p style={{ fontSize: '7.5pt', color: '#94a3b8', fontWeight: 800, margin: '0 0 4px 0', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Saldo Líquido Total</p>
-                    <p style={{ fontSize: '15pt', fontWeight: 900, margin: 0, color: group.total >= 0 ? '#15803d' : '#be123c' }}>
+                  <div style={{ borderBottom: '1px dashed #cbd5e1', paddingBottom: '10px', marginBottom: '10px' }}>
+                    <p style={{ fontSize: '7pt', color: '#64748b', fontWeight: 800, margin: '0 0 2px 0', textTransform: 'uppercase' }}>Saldo Líquido no Período</p>
+                    <p style={{ fontSize: '13pt', fontWeight: 900, margin: 0, color: group.total >= 0 ? '#15803d' : '#be123c' }}>
                       R$ {group.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                     </p>
                   </div>
                   <div>
-                    <p style={{ fontSize: '7.5pt', color: '#94a3b8', fontWeight: 800, margin: '0 0 8px 0', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Detalhamento Bancário</p>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
-                      {Object.entries(group.banks).map(([bank, balance]) => (
-                        <div key={bank} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '9pt', padding: '4px 0', borderBottom: '1px solid #f8fafc' }}>
-                          <span style={{ color: '#475569', fontWeight: 500 }}>{bank}</span>
-                          <span style={{ fontWeight: 700, color: balance >= 0 ? '#166534' : '#9f1239' }}>
-                            R$ {balance.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    <p style={{ fontSize: '7pt', color: '#64748b', fontWeight: 800, margin: '0 0 5px 0', textTransform: 'uppercase' }}>Detalhes por Banco</p>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                      {Object.entries(group.banks).map(([bank, bal]) => (
+                        <div key={bank} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '8.5pt', padding: '2px 0' }}>
+                          <span style={{ color: '#475569', fontWeight: 600 }}>{bank}</span>
+                          <span style={{ fontWeight: 800, color: bal >= 0 ? '#166534' : '#9f1239' }}>
+                            R$ {bal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                           </span>
                         </div>
                       ))}
@@ -205,7 +209,7 @@ const PrintLayout = ({ reportData, companyInfo, logoUrl, dateRange }: { reportDa
       </main>
 
       <footer className="report-footer">
-        Relatório gerado por C2 Gestao Financeira em {new Date().toLocaleString('pt-BR')}
+        Relatório emitido em {new Date().toLocaleString('pt-BR')} • C2 Gestao Financeira
       </footer>
     </div>
   );
@@ -1295,7 +1299,7 @@ const App: React.FC = () => {
 
         {isPdfModalOpen && (
           <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-[100]">
-            <div className="bg-white p-10 rounded-[2.5rem] w-full max-w-sm shadow-2xl text-center">
+            <div className="bg-white p-10 rounded-[2.5rem] w-full max-sm shadow-2xl text-center">
               <h3 className="text-xl font-black mb-2">Gerar Relatório PDF</h3>
               <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-8">Selecione o tipo de relatório</p>
               <div className="space-y-4">
