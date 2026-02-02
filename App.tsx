@@ -393,18 +393,29 @@ const App: React.FC = () => {
     const cnpjToCompanyMap = new Map<string, CompanyInfo>();
     const nameToCompanyMap = new Map<string, CompanyInfo>();
 
+    // Lista fixa de nomes que forçam a origem para Transferencia entre Contas do Grupo
+    const forceGroupNames = [
+      "CAPITAL 2 SERVICOS",
+      "FINX PROMOTORA DE VENDAS LTDA",
+      "C2 INFORMACOES CADASTRAIS LTDA",
+      "CAPITAL 2 GESTAO",
+      "C2R GESTAO DE CORRESPONDENTES BANCARIOS",
+      "R DE S BEZERRA INFORMACOES",
+      "FLEXX A S NEGOCIOS LTDA",
+      "RC INFORMACOES CADASTRAIS LTDA"
+    ].map(n => n.toLowerCase().trim().replace(/\./g, ''));
+
     registeredCompanies.forEach(c => {
       const cleanCnpj = c.cnpj ? c.cnpj.replace(/\D/g, '') : '';
       if (cleanCnpj) {
         cnpjToCompanyMap.set(cleanCnpj, c);
       }
       
-      // Mapeia o nome principal
-      nameToCompanyMap.set(c.name.toLowerCase().trim(), c);
+      const normMain = c.name.toLowerCase().trim().replace(/\./g, '');
+      nameToCompanyMap.set(normMain, c);
       
-      // Mapeia cada nome alternativo para a mesma empresa principal
       c.alternativeNames?.forEach(alt => {
-        nameToCompanyMap.set(alt.toLowerCase().trim(), c);
+        nameToCompanyMap.set(alt.toLowerCase().trim().replace(/\./g, ''), c);
       });
     });
 
@@ -412,7 +423,6 @@ const App: React.FC = () => {
       if (!bank) return bank;
       const b = bank.trim();
       const lower = b.toLowerCase();
-      // Normalização específica para Itaú conforme solicitado
       if (lower === 'itau' || lower === 'itaú') return 'Itaú';
       return b;
     };
@@ -421,19 +431,26 @@ const App: React.FC = () => {
       const cleanTValCnpj = t.ownerCnpj ? t.ownerCnpj.replace(/\D/g, '') : '';
       const lowerTValName = t.ownerName ? t.ownerName.toLowerCase().trim() : '';
 
-      // Tenta identificar a empresa pelo CNPJ ou pelo Nome (Principal ou Alternativo)
-      const matchedCompany = cnpjToCompanyMap.get(cleanTValCnpj) || nameToCompanyMap.get(lowerTValName);
+      const matchedCompany = cnpjToCompanyMap.get(cleanTValCnpj) || nameToCompanyMap.get(lowerTValName.replace(/\./g, ''));
       
-      // Se encontrar uma empresa correspondente, força o Nome Principal e o CNPJ cadastrado
       const finalName = matchedCompany ? matchedCompany.name : t.ownerName;
       const finalCnpj = matchedCompany ? (matchedCompany.cnpj || t.ownerCnpj) : t.ownerCnpj;
-      
+
+      // Lógica para forçar a origem do Grupo Capital Dois
+      const partyNorm = (t.counterpartyName || '').toLowerCase().trim().replace(/\./g, '');
+      const isGroupTransfer = 
+        partyNorm.startsWith("capital 2") || 
+        partyNorm.startsWith("c2r") || 
+        forceGroupNames.includes(partyNorm) || 
+        nameToCompanyMap.has(partyNorm);
+
       return { 
         ...t, 
         ownerName: finalName,
         ownerCnpj: finalCnpj,
         ownerBank: normalizeBank(t.ownerBank),
-        payingBank: normalizeBank(t.payingBank)
+        payingBank: normalizeBank(t.payingBank),
+        origin: isGroupTransfer ? "Transf. entre Contas Grupo" : t.origin
       };
     });
   }, [transactions, registeredCompanies]);
@@ -1024,7 +1041,7 @@ const App: React.FC = () => {
                       <label className="cursor-pointer block">
                         <div className="w-20 h-20 bg-indigo-50 rounded-full flex items-center justify-center mx-auto mb-6">
                           <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                           </svg>
                         </div>
                         <span className="bg-slate-900 text-white font-black px-10 py-4 rounded-2xl text-sm uppercase tracking-widest hover:bg-black transition-all inline-block shadow-lg">
