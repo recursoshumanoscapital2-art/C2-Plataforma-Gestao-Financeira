@@ -277,9 +277,16 @@ const App: React.FC = () => {
 
   const normalizedTransactions = useMemo(() => {
     const cnpjToNameMap = new Map<string, string>();
+    const nameToCnpjMap = new Map<string, string>();
+
     registeredCompanies.forEach(c => {
-      if (c.cnpj) {
-        cnpjToNameMap.set(c.cnpj.replace(/\D/g, ''), c.name);
+      const cleanCnpj = c.cnpj ? c.cnpj.replace(/\D/g, '') : '';
+      if (cleanCnpj) {
+        cnpjToNameMap.set(cleanCnpj, c.name);
+        nameToCnpjMap.set(c.name.toLowerCase().trim(), cleanCnpj);
+        c.alternativeNames?.forEach(alt => {
+          nameToCnpjMap.set(alt.toLowerCase().trim(), cleanCnpj);
+        });
       }
     });
 
@@ -293,15 +300,27 @@ const App: React.FC = () => {
     };
 
     return transactions.map(t => {
-      const cleanCnpj = t.ownerCnpj ? t.ownerCnpj.replace(/\D/g, '') : '';
+      let cleanCnpj = t.ownerCnpj ? t.ownerCnpj.replace(/\D/g, '') : '';
       let ownerName = t.ownerName;
+
+      // Primeiro tenta identificar pelo CNPJ se ele existir
       if (cleanCnpj && cnpjToNameMap.has(cleanCnpj)) {
         ownerName = cnpjToNameMap.get(cleanCnpj)!;
+      } 
+      // Se não houver CNPJ ou não bater, tenta identificar apenas pelo NOME (resolvendo a duplicidade solicitada)
+      else if (ownerName) {
+        const nameLower = ownerName.toLowerCase().trim();
+        if (nameToCnpjMap.has(nameLower)) {
+          const matchedCnpj = nameToCnpjMap.get(nameLower)!;
+          cleanCnpj = matchedCnpj;
+          ownerName = cnpjToNameMap.get(matchedCnpj)!;
+        }
       }
       
       return { 
         ...t, 
         ownerName,
+        ownerCnpj: cleanCnpj, // Mantém o CNPJ vinculado para filtros consistentes
         ownerBank: normalizeBank(t.ownerBank),
         payingBank: normalizeBank(t.payingBank)
       };
@@ -311,7 +330,11 @@ const App: React.FC = () => {
   const filteredTransactions = useMemo(() => {
     let result = [...normalizedTransactions];
 
-    if (selectedCnpj) result = result.filter(t => t.ownerCnpj === selectedCnpj);
+    if (selectedCnpj) {
+      const targetCnpj = selectedCnpj.replace(/\D/g, '');
+      result = result.filter(t => (t.ownerCnpj || '').replace(/\D/g, '') === targetCnpj);
+    }
+
     result = result.filter(t => {
       if (!t.date) return true; 
       const tDatePart = t.date.split('T')[0];
@@ -377,7 +400,26 @@ const App: React.FC = () => {
         });
         
         const result = await processStatement(base64, file.type);
-        allExtractedTransactions.push(...result.transactions);
+        
+        // Lógica de Identificação: Tenta casar o nome extraído do PDF com empresas cadastradas
+        const identifiedTransactions = result.transactions.map((t: any) => {
+          const partyNameLower = (t.ownerName || '').toLowerCase().trim();
+          const matchedCompany = registeredCompanies.find(c => 
+            c.name.toLowerCase().trim() === partyNameLower ||
+            c.alternativeNames?.some(alt => alt.toLowerCase().trim() === partyNameLower)
+          );
+          
+          if (matchedCompany) {
+            return {
+              ...t,
+              ownerName: matchedCompany.name,
+              ownerCnpj: matchedCompany.cnpj || t.ownerCnpj // Sobrescreve com o CNPJ da base se cadastrado
+            };
+          }
+          return t;
+        });
+
+        allExtractedTransactions.push(...identifiedTransactions);
       }
 
       if (interruptRef.current) {
@@ -607,7 +649,7 @@ const App: React.FC = () => {
 
   const currentCompanyInfo = useMemo(() => {
     if (!selectedCnpj) return { name: 'Grupo Capital Dois', cnpj: 'Múltiplas Empresas' };
-    const first = filteredTransactions.find(t => t.ownerCnpj === selectedCnpj);
+    const first = filteredTransactions.find(t => (t.ownerCnpj || '').replace(/\D/g, '') === selectedCnpj.replace(/\D/g, ''));
     return { name: first?.ownerName || 'Empresa', cnpj: first?.ownerCnpj || '' };
   }, [filteredTransactions, selectedCnpj]);
 
