@@ -51,9 +51,31 @@ export interface UserInfo {
   active: boolean;
 }
 
-const PrintLayout = ({ reportData, companyInfo, logoUrl, dateRange }: { reportData: { title: string; data: Transaction[]; type: 'inflow' | 'outflow' | 'all' }, companyInfo: any, logoUrl: string | null, dateRange: { start: string, end: string } }) => {
+const PrintLayout = ({ reportData, companyInfo, logoUrl, dateRange, registeredCompanies }: { 
+  reportData: { title: string; data: Transaction[]; type: 'inflow' | 'outflow' | 'all' }, 
+  companyInfo: any, 
+  logoUrl: string | null, 
+  dateRange: { start: string, end: string },
+  registeredCompanies: CompanyInfo[]
+}) => {
   // Helper to format currency consistently and avoid toLocaleString argument issues
   const formatCurrency = (val: number) => new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(val);
+
+  // Helper local para resolver o nome canônico/principal da empresa para agrupamento no PDF
+  const getCanonicalName = (name: string, cnpj: string) => {
+    const normalize = (s: string) => s.toLowerCase().trim().replace(/\./g, '');
+    const normName = normalize(name);
+    const cleanCnpj = (cnpj || '').replace(/\D/g, '');
+    
+    const found = registeredCompanies.find(c => {
+       const cCnpj = (c.cnpj || '').replace(/\D/g, '');
+       return (cleanCnpj && cleanCnpj === cCnpj) || 
+              normalize(c.name) === normName || 
+              c.alternativeNames?.some(alt => normalize(alt) === normName);
+    });
+    
+    return found ? found.name : name;
+  };
 
   // Fix: Explicitly type the accumulator in reduce to avoid 'unknown' type errors for summary properties.
   const summary = useMemo(() => {
@@ -74,12 +96,13 @@ const PrintLayout = ({ reportData, companyInfo, logoUrl, dateRange }: { reportDa
     }> = {};
 
     reportData.data.forEach(t => {
-      // Como os dados já chegam normalizados pelo App.tsx, usamos o ownerName direto
-      const compKey = t.ownerName.trim().toUpperCase();
+      // Usa o nome canônico para garantir que variações de nomes alternativos agrupem no mesmo card
+      const targetName = getCanonicalName(t.ownerName, t.ownerCnpj);
+      const compKey = targetName.trim().toUpperCase();
       const bank = t.type === TransactionType.INFLOW ? t.payingBank : t.ownerBank;
       
       if (!groups[compKey]) {
-        groups[compKey] = { name: t.ownerName, total: 0, banks: {} };
+        groups[compKey] = { name: targetName, total: 0, banks: {} };
       }
 
       const val = t.amount;
@@ -93,10 +116,11 @@ const PrintLayout = ({ reportData, companyInfo, logoUrl, dateRange }: { reportDa
     });
 
     return Object.values(groups).sort((a, b) => a.name.localeCompare(b.name));
-  }, [reportData.data]);
+  }, [reportData.data, registeredCompanies]);
 
   // Saldo Líquido Geral: Saldo Manual + Entradas - Saídas
-  const balance = summary.totalManual + summary.totalInflow - summary.totalOutflow;
+  // Fix: Ensure the calculated balance is explicitly typed as number to resolve TS comparison and formatting errors.
+  const balance: number = (summary.totalManual as number) + (summary.totalInflow as number) - (summary.totalOutflow as number);
 
   return (
     <div id="report-print-area">
@@ -154,7 +178,7 @@ const PrintLayout = ({ reportData, companyInfo, logoUrl, dateRange }: { reportDa
             {reportData.data.map(t => (
               <tr key={t.id}>
                 <td style={{ whiteSpace: 'nowrap' }}>{new Date(t.date).toLocaleDateString('pt-BR')}</td>
-                <td>{t.ownerName}</td>
+                <td>{getCanonicalName(t.ownerName, t.ownerCnpj)}</td>
                 <td>{t.type === TransactionType.INFLOW ? t.payingBank : t.ownerBank}</td>
                 <td>{t.origin}</td>
                 <td>{t.counterpartyName || '-'}</td>
@@ -1356,7 +1380,7 @@ const App: React.FC = () => {
         )}
       </div>
       
-      {reportDataForPrint && <PrintLayout reportData={reportDataForPrint} companyInfo={currentCompanyInfo} logoUrl={logoUrl} dateRange={{ start: startDate, end: endDate }} />}
+      {reportDataForPrint && <PrintLayout reportData={reportDataForPrint} companyInfo={currentCompanyInfo} logoUrl={logoUrl} dateRange={{ start: startDate, end: endDate }} registeredCompanies={registeredCompanies} />}
     </>
   );
 };
