@@ -34,7 +34,20 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
 
   const saveEdit = () => {
     if (editingCell) {
-      onUpdateTransaction(editingCell.id, { [editingCell.field]: tempValue });
+      const field = editingCell.field;
+      let valueToSave: any = tempValue;
+      
+      if (field === 'amount') {
+        // Converte string para número, tratando vírgula como ponto e limpando caracteres não numéricos
+        const cleaned = tempValue.replace(/[^\d,.-]/g, '').replace(',', '.');
+        valueToSave = parseFloat(cleaned);
+        if (isNaN(valueToSave)) {
+          setEditingCell(null);
+          return;
+        }
+      }
+      
+      onUpdateTransaction(editingCell.id, { [field]: valueToSave });
       setEditingCell(null);
     }
   };
@@ -344,9 +357,25 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                     t.type === TransactionType.INFLOW ? 'text-emerald-600' : 
                     t.type === TransactionType.OUTFLOW ? 'text-rose-600' : 'text-indigo-600'
                   }`}>
-                    <span className="text-[10px] text-slate-400 mr-1 font-bold">R$</span>
-                    {t.type === TransactionType.OUTFLOW ? '-' : ''} 
-                    {Math.abs(t.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                    {editingCell?.id === t.id && editingCell.field === 'amount' ? (
+                      <input
+                        autoFocus
+                        className="w-full border-2 border-indigo-400 rounded-lg px-2 py-1.5 text-[11px] outline-none shadow-sm text-right font-black"
+                        value={tempValue}
+                        onChange={(e) => setTempValue(e.target.value)}
+                        onBlur={saveEdit}
+                        onKeyDown={handleKeyDown}
+                      />
+                    ) : (
+                      <div 
+                        onClick={() => startEditing(t.id, 'amount', t.amount.toString())}
+                        className="cursor-pointer border-b border-transparent hover:border-indigo-200"
+                      >
+                        <span className="text-[10px] text-slate-400 mr-1 font-bold">R$</span>
+                        {t.type === TransactionType.OUTFLOW ? '-' : ''} 
+                        {Math.abs(t.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                      </div>
+                    )}
                   </td>
 
                   <td className="px-6 py-4">
