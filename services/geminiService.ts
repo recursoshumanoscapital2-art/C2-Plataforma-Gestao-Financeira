@@ -2,110 +2,149 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { Transaction, TransactionType, PaymentMethod, StatementResult } from "../types";
 
+/**
+ * Função auxiliar para executar chamadas com repetição automática em caso de erro 503 ou 429.
+ */
+async function withRetry<T>(fn: () => Promise<T>, maxRetries = 4, initialDelay = 3000): Promise<T> {
+  let lastError: any;
+  for (let i = 0; i <= maxRetries; i++) {
+    try {
+      return await fn();
+    } catch (error: any) {
+      lastError = error;
+      
+      // Verifica se é erro de cota (429) ou sobrecarga (503)
+      const isQuotaError = error.status === 429 || error.message?.includes("429") || error.message?.includes("QUOTA_EXHAUSTED") || error.message?.includes("RESOURCE_EXHAUSTED");
+      const isOverloadError = error.status === 503 || error.message?.includes("503") || error.message?.includes("overloaded");
+
+      if ((isQuotaError || isOverloadError) && i < maxRetries) {
+        // Se for erro de cota (429), precisamos de um delay maior (backoff exponencial mais agressivo)
+        const multiplier = isQuotaError ? 10 : 2; 
+        const delay = initialDelay * Math.pow(multiplier, i);
+        
+        console.warn(`Aviso: Limite de cota ou sobrecarga atingido. Tentativa ${i + 1}/${maxRetries}. Aguardando ${Math.round(delay/1000)}s antes de tentar novamente...`);
+        
+        await new Promise(resolve => setTimeout(resolve, delay));
+        continue;
+      }
+      throw error;
+    }
+  }
+  throw lastError;
+}
+
 export async function processStatement(fileBase64: string, mimeType: string): Promise<StatementResult> {
-  // FIX: Per coding guidelines, the API key must be obtained from process.env.API_KEY.
   const apiKey = process.env.API_KEY;
   if (!apiKey) {
-    throw new Error("A variável de ambiente VITE_API_KEY não está configurada no seu ambiente de hospedagem (Render). Por favor, defina a variável 'VITE_API_KEY' nas configurações do seu serviço no Render.");
+    throw new Error("A variável de ambiente API_KEY não está configurada.");
   }
   
-  // Initialize GoogleGenAI with the key from the environment
   const ai = new GoogleGenAI({apiKey: apiKey});
 
-  // Utilizando o modelo gemini-3-flash-preview para uma análise rápida e gratuita.
-  const response = await ai.models.generateContent({
-    model: 'gemini-3-flash-preview',
-    contents: {
-      parts: [
-        {
-          inlineData: {
-            data: fileBase64,
-            mimeType: mimeType
-          }
-        },
-        {
-          text: "Analise o extrato bancário (PDF ou Imagem) e extraia os dados para o formato JSON solicitado. Foque na precisão absoluta dos valores e datas."
-        }
-      ]
-    },
-    config: {
-      systemInstruction: `Você é um especialista em contabilidade e análise bancária brasileira.
-          Sua tarefa é converter extratos bancários em dados estruturados com precisão absoluta.
-          
-          REGRAS CRÍTICAS PARA O PROPRIETÁRIO (OWNER):
-          1. ownerName: Identifique a Razão Social ou Nome do Titular da conta.
-          2. ownerCnpj: EXTRAIA O CNPJ APENAS se houver explicitamente a nomenclatura 'CNPJ' seguida de números no documento. Se não encontrar o termo 'CNPJ' explicitamente, deixe este campo vazio ("").
-          3. ownerBank: Identifique o banco emissor.
-          
-          REGRAS PARA TRANSAÇÕES:
-          - Identifique cada linha de movimentação.
-          - date: Formato ISO 8601 (YYYY-MM-DDTHH:mm:ss).
-          - amount: Valor numérico positivo.
-          - type: "entrada" para créditos/depósitos, "saída" para débitos/pagamentos/tarifas.
-          - paymentMethod: Classifique em PIX, TED, BOLETO, CARTÃO ou OUTROS.
-          - origin: Descreva a natureza (ex: Venda, Tarifa, Transferência).
-          - counterpartyName: Nome de quem recebeu ou enviou o dinheiro.`,
-      responseMimeType: "application/json",
-      responseSchema: {
-        type: Type.OBJECT,
-        properties: {
-          ownerName: { type: Type.STRING },
-          ownerCnpj: { type: Type.STRING },
-          ownerBank: { type: Type.STRING },
-          transactions: {
-            type: Type.ARRAY,
-            items: {
-              type: Type.OBJECT,
-              properties: {
-                date: { type: Type.STRING },
-                description: { type: Type.STRING },
-                amount: { type: Type.NUMBER },
-                type: { type: Type.STRING },
-                counterpartyName: { type: Type.STRING },
-                counterpartyCnpj: { type: Type.STRING },
-                paymentMethod: { type: Type.STRING },
-                payerName: { type: Type.STRING },
-                origin: { type: Type.STRING },
-                payingBank: { type: Type.STRING }
-              },
-              required: ['date', 'amount', 'type', 'description']
+  return withRetry(async () => {
+    const response = await ai.models.generateContent({
+      model: 'gemini-3-flash-preview',
+      contents: {
+        parts: [
+          {
+            inlineData: {
+              data: fileBase64,
+              mimeType: mimeType
             }
+          },
+          {
+            text: "Extraia TODAS as transações deste extrato. Seja exaustivo e não pule nenhuma linha de movimentação financeira."
           }
-        },
-        required: ['ownerName', 'ownerCnpj', 'ownerBank', 'transactions']
+        ]
+      },
+      config: {
+        maxOutputTokens: 15000,
+        thinkingConfig: { thinkingBudget: 0 },
+        systemInstruction: `Você é um robô de extração de dados contábeis de alta precisão.
+            Converta extratos bancários para JSON. 
+            
+            REGRAS DE ECONOMIA DE TOKENS (CRÍTICO):
+            1. No array 'transactions', NÃO repita informações do dono da conta ou do banco emissor.
+            2. Extraia apenas o essencial de cada linha para manter o JSON conciso.
+            
+            INSTRUÇÕES DE CAMPOS:
+            - ownerName: Razão Social/Titular da conta.
+            - ownerCnpj: APENAS se escrito 'CNPJ' no texto. Se não, deixe "".
+            - ownerBank: Nome do banco (ex: Itaú, Bradesco).
+            - transactions: Lista de todas as movimentações.
+            - date: ISO 8601 (YYYY-MM-DDTHH:mm:ss).
+            - type: "entrada" (crédito) ou "saída" (débito).
+            - method: Classifique em PIX, TED, BOLETO, CARTÃO ou OUTROS.
+            - category: Breve descrição da origem (Venda, Tarifa, Imposto, etc).`,
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            ownerName: { type: Type.STRING },
+            ownerCnpj: { type: Type.STRING },
+            ownerBank: { type: Type.STRING },
+            transactions: {
+              type: Type.ARRAY,
+              items: {
+                type: Type.OBJECT,
+                properties: {
+                  date: { type: Type.STRING },
+                  desc: { type: Type.STRING },
+                  val: { type: Type.NUMBER },
+                  type: { type: Type.STRING },
+                  party: { type: Type.STRING, description: "Nome da contraparte ou favorecido" },
+                  method: { type: Type.STRING },
+                  cat: { type: Type.STRING }
+                },
+                required: ['date', 'val', 'type', 'desc']
+              }
+            }
+          },
+          required: ['ownerName', 'ownerCnpj', 'ownerBank', 'transactions']
+        }
       }
+    });
+
+    let jsonStr = response.text?.trim() ?? "{}";
+    
+    if (jsonStr.includes('```json')) {
+      jsonStr = jsonStr.split('```json')[1].split('```')[0].trim();
+    } else if (jsonStr.includes('```')) {
+      jsonStr = jsonStr.split('```')[1].split('```')[0].trim();
+    }
+
+    try {
+      const rawData = JSON.parse(jsonStr);
+      
+      const ownerName = rawData.ownerName || 'Empresa não identificada';
+      const ownerCnpj = rawData.ownerCnpj || '';
+      const ownerBank = rawData.ownerBank || 'Banco não identificado';
+      
+      return {
+        ownerName,
+        ownerCnpj,
+        ownerBank,
+        transactions: (rawData.transactions || []).map((item: any, index: number) => ({
+          id: `${Date.now()}-${index}-${Math.random().toString(36).substring(2, 7)}`,
+          date: item.date || new Date().toISOString(),
+          description: item.desc || 'Sem descrição',
+          amount: Math.abs(item.val || 0),
+          type: item.type === 'entrada' ? TransactionType.INFLOW : TransactionType.OUTFLOW,
+          counterpartyName: item.party || 'Não identificado',
+          counterpartyCnpj: '',
+          paymentMethod: (item.method as PaymentMethod) || PaymentMethod.OUTROS,
+          payerName: item.type === 'saída' ? ownerName : (item.party || 'Terceiro'),
+          origin: item.cat || 'Extração IA',
+          payingBank: ownerBank,
+          notes: '', 
+          ownerName,
+          ownerCnpj,
+          ownerBank
+        }))
+      };
+    } catch (parseError) {
+      console.error("Erro ao parsear JSON:", jsonStr);
+      throw new Error("A resposta da IA veio incompleta. O arquivo pode ser muito grande ou complexo.");
     }
   });
-
-  // response.text is a getter property, safely access it without method call
-  const jsonStr = response.text?.trim() ?? "{}";
-  const rawData = JSON.parse(jsonStr);
-  
-  const ownerName = rawData.ownerName || 'Empresa não identificada';
-  const ownerCnpj = rawData.ownerCnpj || '';
-  const ownerBank = rawData.ownerBank || 'Banco não identificado';
-  
-  return {
-    ownerName,
-    ownerCnpj,
-    ownerBank,
-    transactions: (rawData.transactions || []).map((item: any, index: number) => ({
-      // Using substring instead of deprecated substr
-      id: `${Date.now()}-${index}-${Math.random().toString(36).substring(2, 11)}`,
-      date: item.date || new Date().toISOString(),
-      description: item.description || 'Sem descrição',
-      amount: item.amount || 0,
-      type: item.type === 'entrada' ? TransactionType.INFLOW : TransactionType.OUTFLOW,
-      counterpartyName: item.counterpartyName || 'Não identificado',
-      counterpartyCnpj: item.counterpartyCnpj || '',
-      paymentMethod: (item.paymentMethod as PaymentMethod) || PaymentMethod.OUTROS,
-      payerName: item.type === 'saída' ? ownerName : (item.counterpartyName || 'Terceiro'),
-      origin: item.origin || 'Extração IA',
-      payingBank: item.payingBank || ownerBank,
-      notes: '', 
-      ownerName,
-      ownerCnpj,
-      ownerBank
-    }))
-  };
 }
