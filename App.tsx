@@ -414,7 +414,10 @@ const App: React.FC = () => {
       "C2R GESTAO DE CORRESPONDENTES BANCARIOS",
       "R DE S BEZERRA INFORMACOES",
       "FLEXX A S NEGOCIOS LTDA",
-      "RC INFORMACOES CADASTRAIS LTDA"
+      "RC INFORMACOES CADASTRAIS LTDA",
+      "FLEXX",
+      "TC",
+      "C2 INFORMA"
     ].map(n => n.toLowerCase().trim().replace(/\./g, ''));
 
     registeredCompanies.forEach(c => {
@@ -448,7 +451,7 @@ const App: React.FC = () => {
       const finalName = matchedCompany ? matchedCompany.name : t.ownerName;
       const finalCnpj = matchedCompany ? (matchedCompany.cnpj || t.ownerCnpj) : t.ownerCnpj;
 
-      // Lógica para forçar a origem do Grupo Capital Dois
+      // Lógica para forçar a origem do Grupo Capital Dois baseada em nomes ou prefixos específicos
       const partyNorm = (t.counterpartyName || '').toLowerCase().trim().replace(/\./g, '');
       const isGroupTransfer = 
         partyNorm.startsWith("capital 2") || 
@@ -456,8 +459,12 @@ const App: React.FC = () => {
         partyNorm.startsWith("flexx") ||
         partyNorm.startsWith("tc") ||
         partyNorm.startsWith("c2 informa") ||
-        forceGroupNames.includes(partyNorm) || 
+        forceGroupNames.some(groupName => partyNorm === groupName || partyNorm.startsWith(groupName)) || 
         nameToCompanyMap.has(partyNorm);
+
+      // Nova lógica para Banco do Brasil: Invest. Resgate Autom. deve somar ao saldo (forçar como entrada)
+      const isBBResgate = (t.payingBank?.toLowerCase().includes("brasil") || t.ownerBank?.toLowerCase().includes("brasil")) && 
+                          t.description?.toLowerCase().includes("invest. resgate autom.");
 
       return { 
         ...t, 
@@ -465,7 +472,8 @@ const App: React.FC = () => {
         ownerCnpj: finalCnpj,
         ownerBank: normalizeBank(t.ownerBank),
         payingBank: normalizeBank(t.payingBank),
-        origin: isGroupTransfer ? "Tran. Conta Grupo" : t.origin
+        origin: isGroupTransfer ? "Transf. Contas Grupo" : t.origin,
+        type: isBBResgate ? TransactionType.INFLOW : t.type
       };
     });
   }, [transactions, registeredCompanies]);
@@ -816,7 +824,7 @@ const App: React.FC = () => {
     
     // Filtrar transferências de grupo se o usuário escolheu "Não"
     if (!includeGroupTransfers) {
-      data = data.filter(t => t.origin !== "Tran. Conta Grupo");
+      data = data.filter(t => t.origin !== "Transf. Contas Grupo");
     }
 
     let title = "Relatório Geral de Transações";
@@ -1492,7 +1500,7 @@ const App: React.FC = () => {
               </div>
               <h3 className="text-xl font-black mb-4">Inclusão de Grupo</h3>
               <p className="text-sm text-slate-600 font-bold mb-8 leading-relaxed">
-                Você deseja baixar o PDF com <span className="text-indigo-600">Tran. Conta Grupo</span>?
+                Você deseja baixar o PDF com <span className="text-indigo-600">Transf. Contas Grupo</span>?
               </p>
               <div className="flex gap-4">
                 <button 
