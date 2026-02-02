@@ -21,8 +21,9 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, selectedCnpj }) => 
 
   const summary = useMemo(() => {
     return transactions.reduce((acc, t) => {
-      if (t.type === TransactionType.INFLOW) acc.totalInflow += t.amount;
-      else if (t.type === TransactionType.OUTFLOW) acc.totalOutflow += t.amount;
+      const val = Math.abs(t.amount);
+      if (t.type === TransactionType.INFLOW) acc.totalInflow += val;
+      else if (t.type === TransactionType.OUTFLOW) acc.totalOutflow += val;
       else if (t.type === TransactionType.MANUAL) acc.totalManual += t.amount;
       else if (t.type === TransactionType.GROUP) {
         acc.totalGroup += t.amount;
@@ -39,13 +40,14 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, selectedCnpj }) => 
       const day = t.date.split('T')[0];
       if (!days[day]) days[day] = { date: day, inflow: 0, outflow: 0 };
       
-      if (t.type === TransactionType.INFLOW) days[day].inflow += t.amount;
-      else if (t.type === TransactionType.OUTFLOW) days[day].outflow += t.amount;
+      const val = Math.abs(t.amount);
+      if (t.type === TransactionType.INFLOW) days[day].inflow += val;
+      else if (t.type === TransactionType.OUTFLOW) days[day].outflow += val;
     });
     return Object.values(days).sort((a, b) => a.date.localeCompare(b.date));
   }, [transactions]);
 
-  // Conforme solicitado, transações do tipo GRUPO não alteram o Saldo Líquido no Período
+  // Saldo Líquido no Período computa Entradas - Saídas + Ajustes Manuais
   const netBalance = summary.totalInflow - summary.totalOutflow + summary.totalManual;
 
   return (
