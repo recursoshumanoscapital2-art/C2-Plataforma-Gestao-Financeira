@@ -9,6 +9,7 @@ interface TransactionTableProps {
   selectedCnpj: string | null;
   columnFilters: ColumnFilters;
   onColumnFilterChange: (field: keyof ColumnFilters, value: string) => void;
+  registeredCompanies: any[]; // Adicionado para seguir a lógica do seletor global
 }
 
 const TransactionTable: React.FC<TransactionTableProps> = ({ 
@@ -17,7 +18,8 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
   onUpdateTransaction, 
   selectedCnpj,
   columnFilters,
-  onColumnFilterChange
+  onColumnFilterChange,
+  registeredCompanies
 }) => {
   const [editingCell, setEditingCell] = useState<{ id: string, field: keyof Transaction } | null>(null);
   const [tempValue, setTempValue] = useState("");
@@ -54,7 +56,6 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
 
   const uniqueData = useMemo(() => {
     return {
-      owners: Array.from(new Set(allTransactions.map(t => t.ownerName))).sort(),
       banks: Array.from(new Set(allTransactions.map(t => t.ownerBank))).sort(),
       origins: Array.from(new Set(allTransactions.map(t => t.origin))).sort(),
       counterparties: Array.from(new Set(allTransactions.filter(t => t.type === TransactionType.OUTFLOW).map(t => t.counterpartyName))).sort(),
@@ -65,7 +66,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
     setActiveFilter(activeFilter === column ? null : column);
   };
 
-  const HeaderCell = ({ label, field, type = 'select', options = [], align = 'left' }: { label: string, field: keyof ColumnFilters, type?: 'select' | 'date' | 'text', options?: string[], align?: 'left' | 'right' }) => {
+  const HeaderCell = ({ label, field, type = 'select', options = [], align = 'left' }: { label: string, field: keyof ColumnFilters, type?: 'select' | 'date' | 'text', options?: {label: string, value: string}[], align?: 'left' | 'right' }) => {
     const isActive = activeFilter === field;
     const hasFilter = columnFilters[field] !== '';
 
@@ -133,11 +134,11 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                 </button>
                 {options.map(opt => (
                   <button 
-                    key={opt}
-                    onClick={() => { onColumnFilterChange(field, opt); setActiveFilter(null); }}
-                    className={`w-full text-left px-3 py-2 rounded-lg text-xs font-bold transition-colors truncate ${columnFilters[field] === opt ? 'bg-indigo-50 text-indigo-600' : 'text-slate-500 hover:bg-slate-50'}`}
+                    key={opt.value}
+                    onClick={() => { onColumnFilterChange(field, opt.value); setActiveFilter(null); }}
+                    className={`w-full text-left px-3 py-2 rounded-lg text-xs font-bold transition-colors truncate ${columnFilters[field] === opt.value ? 'bg-indigo-50 text-indigo-600' : 'text-slate-500 hover:bg-slate-50'}`}
                   >
-                    {opt}
+                    {opt.label}
                   </button>
                 ))}
               </div>
@@ -217,11 +218,15 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
             <thead>
               <tr className="bg-slate-50/80 border-b border-slate-100">
                 <HeaderCell label="Data" field="date" type="date" />
-                <HeaderCell label="Empresa" field="ownerName" options={uniqueData.owners} />
-                <HeaderCell label="Banco" field="payingBank" options={uniqueData.banks} />
-                <HeaderCell label="Tipo" field="type" options={['entrada', 'saída', 'saldo manual']} />
-                <HeaderCell label="Origem" field="origin" options={uniqueData.origins} />
-                <HeaderCell label="Favorecido" field="counterpartyName" options={uniqueData.counterparties} />
+                <HeaderCell 
+                  label="Empresa" 
+                  field="ownerName" 
+                  options={registeredCompanies.map(c => ({ label: c.name, value: c.cnpj }))} 
+                />
+                <HeaderCell label="Banco" field="payingBank" options={uniqueData.banks.map(b => ({ label: b, value: b }))} />
+                <HeaderCell label="Tipo" field="type" options={['entrada', 'saída', 'saldo manual'].map(t => ({ label: t, value: t }))} />
+                <HeaderCell label="Origem" field="origin" options={uniqueData.origins.map(o => ({ label: o, value: o }))} />
+                <HeaderCell label="Favorecido" field="counterpartyName" options={uniqueData.counterparties.map(c => ({ label: c, value: c }))} />
                 <HeaderCell label="Valor" field="amount" type="text" align="right" />
                 <th className="px-6 py-5 w-52 text-[10px] font-black uppercase tracking-widest text-slate-400">Observações</th>
               </tr>
