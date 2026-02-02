@@ -53,15 +53,15 @@ export interface UserInfo {
 const PrintLayout = ({ reportData, companyInfo, logoUrl, dateRange }: { reportData: { title: string; data: Transaction[]; type: 'inflow' | 'outflow' | 'all' }, companyInfo: any, logoUrl: string | null, dateRange: { start: string, end: string } }) => {
   const summary = useMemo(() => {
     return reportData.data.reduce((acc, t) => {
-      // Transações do tipo GROUP não alteram os totais conforme solicitado anteriormente
-      if (t.type === TransactionType.INFLOW) acc.totalInflow += t.amount;
-      else if (t.type === TransactionType.OUTFLOW) acc.totalOutflow += t.amount;
+      const val = Math.abs(t.amount);
+      if (t.type === TransactionType.INFLOW) acc.totalInflow += val;
+      else if (t.type === TransactionType.OUTFLOW) acc.totalOutflow += val;
       else if (t.type === TransactionType.MANUAL) acc.totalManual += t.amount;
       return acc;
     }, { totalInflow: 0, totalOutflow: 0, totalManual: 0 });
   }, [reportData.data]);
 
-  // Saldo Líquido agora computa Entradas, Saídas e Saldos Manuais
+  // Saldo Líquido: Entradas - Saídas + Ajustes Manuais
   const balance = summary.totalInflow - summary.totalOutflow + summary.totalManual;
 
   return (
