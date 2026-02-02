@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Transaction, TransactionType } from '../types';
 import { ColumnFilters } from '../App';
@@ -336,7 +335,8 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                     t.type === TransactionType.OUTFLOW ? 'text-rose-600' : 'text-indigo-600'
                   }`}>
                     <span className="text-[10px] text-slate-400 mr-1 font-bold">R$</span>
-                    {t.type === TransactionType.OUTFLOW ? '-' : ''} 
+                    {/* Sempre acrescenta sinal de - se for Saída ou Grupo com valor negativo */}
+                    {(t.type === TransactionType.OUTFLOW || (t.type === TransactionType.GROUP && t.amount < 0)) ? '-' : ''} 
                     {Math.abs(t.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                   </td>
 
