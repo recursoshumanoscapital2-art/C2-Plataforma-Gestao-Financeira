@@ -57,7 +57,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
       owners: Array.from(new Set(allTransactions.map(t => t.ownerName))).sort(),
       banks: Array.from(new Set(allTransactions.map(t => t.ownerBank))).sort(),
       origins: Array.from(new Set(allTransactions.map(t => t.origin))).sort(),
-      counterparties: Array.from(new Set(allTransactions.filter(t => t.type === TransactionType.OUTFLOW || t.type === TransactionType.GROUP).map(t => t.counterpartyName))).sort(),
+      counterparties: Array.from(new Set(allTransactions.filter(t => t.type === TransactionType.OUTFLOW).map(t => t.counterpartyName))).sort(),
     };
   }, [allTransactions]);
 
@@ -219,7 +219,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                 <HeaderCell label="Data" field="date" type="date" />
                 <HeaderCell label="Empresa" field="ownerName" options={uniqueData.owners} />
                 <HeaderCell label="Banco" field="payingBank" options={uniqueData.banks} />
-                <HeaderCell label="Tipo" field="type" options={['entrada', 'saída', 'saldo manual', 'grupo']} />
+                <HeaderCell label="Tipo" field="type" options={['entrada', 'saída', 'saldo manual']} />
                 <HeaderCell label="Origem" field="origin" options={uniqueData.origins} />
                 <HeaderCell label="Favorecido" field="counterpartyName" options={uniqueData.counterparties} />
                 <HeaderCell label="Valor" field="amount" type="text" align="right" />
@@ -261,7 +261,6 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                       >
                         <option value={TransactionType.INFLOW}>entrada</option>
                         <option value={TransactionType.OUTFLOW}>saída</option>
-                        <option value={TransactionType.GROUP}>grupo</option>
                         <option value={TransactionType.MANUAL}>saldo manual</option>
                       </select>
                     ) : (
@@ -272,8 +271,6 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                         ? 'bg-emerald-50 text-emerald-700 border-emerald-100' 
                         : t.type === TransactionType.OUTFLOW 
                         ? 'bg-rose-50 text-rose-700 border-rose-100'
-                        : t.type === TransactionType.GROUP
-                        ? 'bg-purple-50 text-purple-700 border-purple-200'
                         : 'bg-slate-50 text-slate-700 border-slate-200'
                       }`}>
                         {t.type}
@@ -314,29 +311,31 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                     ) : (
                       <div 
                         onClick={() => startEditing(t.id, 'counterpartyName', t.counterpartyName)}
-                        className="cursor-pointer group/item flex items-center gap-2"
+                        className="cursor-pointer group/item flex items-center gap-2 overflow-hidden"
                       >
-                        <div className="flex-1 min-w-0">
-                          <div className="text-[12px] font-black text-slate-900 truncate border-b border-transparent group-hover/item:border-indigo-200 leading-tight inline-block mr-1">
+                        <div className="flex-1 min-w-0 flex items-center overflow-hidden">
+                          <div className="text-[12px] font-black text-slate-900 truncate border-b border-transparent group-hover/item:border-indigo-200 leading-tight mr-1" title={t.counterpartyName || '-'}>
                             {t.counterpartyName || '-'}
                           </div>
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 text-slate-300 group-hover/item:text-indigo-400 inline transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 text-slate-300 group-hover/item:text-indigo-400 inline shrink-0 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
                           </svg>
-                          {t.type !== TransactionType.INFLOW && <div className="text-[9px] text-slate-400 truncate mt-0.5 opacity-80">{t.description}</div>}
                         </div>
+                      </div>
+                    )}
+                    {editingCell?.id !== t.id && t.type !== TransactionType.INFLOW && (
+                      <div className="text-[9px] text-slate-400 truncate mt-0.5 opacity-80" title={t.description}>
+                        {t.description}
                       </div>
                     )}
                   </td>
 
                   <td className={`px-6 py-4 text-sm font-black text-right whitespace-nowrap ${
-                    t.type === TransactionType.GROUP ? 'text-purple-600' :
                     t.type === TransactionType.INFLOW ? 'text-emerald-600' : 
                     t.type === TransactionType.OUTFLOW ? 'text-rose-600' : 'text-indigo-600'
                   }`}>
                     <span className="text-[10px] text-slate-400 mr-1 font-bold">R$</span>
-                    {/* Sempre acrescenta sinal de - se for Saída ou Grupo com valor negativo */}
-                    {(t.type === TransactionType.OUTFLOW || (t.type === TransactionType.GROUP && t.amount < 0)) ? '-' : ''} 
+                    {t.type === TransactionType.OUTFLOW ? '-' : ''} 
                     {Math.abs(t.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                   </td>
 
@@ -354,7 +353,8 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                     ) : (
                       <div 
                         onClick={() => startEditing(t.id, 'notes', t.notes)}
-                        className={`text-[10px] cursor-pointer border-b border-transparent hover:border-indigo-200 min-h-[1.2rem] italic leading-tight ${t.notes ? 'text-indigo-600 font-bold' : 'text-slate-300 font-medium'}`}
+                        className={`text-[10px] cursor-pointer border-b border-transparent hover:border-indigo-200 min-h-[1.2rem] italic leading-tight truncate ${t.notes ? 'text-indigo-600 font-bold' : 'text-slate-300 font-medium'}`}
+                        title={t.notes}
                       >
                         {t.notes || 'Adicionar obs...'}
                       </div>
