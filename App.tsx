@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import { Transaction, TransactionType, PaymentMethod } from './types';
@@ -16,6 +15,9 @@ import {
   doc,
   deleteDoc
 } from "firebase/firestore";
+
+// The environment provides global types for window.aistudio and AIStudio.
+// Local declarations are removed to avoid duplicate identifier and modifier conflicts.
 
 export interface ColumnFilters {
   date: string;
@@ -51,13 +53,16 @@ export interface UserInfo {
 const PrintLayout = ({ reportData, companyInfo, logoUrl, dateRange }: { reportData: { title: string; data: Transaction[]; type: 'inflow' | 'outflow' | 'all' }, companyInfo: any, logoUrl: string | null, dateRange: { start: string, end: string } }) => {
   const summary = useMemo(() => {
     return reportData.data.reduce((acc, t) => {
+      // Transações do tipo GROUP não alteram os totais conforme solicitado anteriormente
       if (t.type === TransactionType.INFLOW) acc.totalInflow += t.amount;
-      else acc.totalOutflow += t.amount;
+      else if (t.type === TransactionType.OUTFLOW) acc.totalOutflow += t.amount;
+      else if (t.type === TransactionType.MANUAL) acc.totalManual += t.amount;
       return acc;
-    }, { totalInflow: 0, totalOutflow: 0 });
+    }, { totalInflow: 0, totalOutflow: 0, totalManual: 0 });
   }, [reportData.data]);
 
-  const balance = summary.totalInflow - summary.totalOutflow;
+  // Saldo Líquido agora computa Entradas, Saídas e Saldos Manuais
+  const balance = summary.totalInflow - summary.totalOutflow + summary.totalManual;
 
   return (
     <div id="report-print-area">
@@ -106,7 +111,7 @@ const PrintLayout = ({ reportData, companyInfo, logoUrl, dateRange }: { reportDa
               <th>Empresa</th>
               <th>Banco</th>
               <th>Origem</th>
-              {(reportData.type === 'outflow' || reportData.type === 'all') && <th>Favorecido</th>}
+              {(reportData.type === 'outflow' || reportData.type === 'all' || reportData.type === 'inflow') && <th>Favorecido</th>}
               <th style={{ textAlign: 'right' }}>Valor (R$)</th>
               <th>Observações</th>
             </tr>
@@ -118,9 +123,15 @@ const PrintLayout = ({ reportData, companyInfo, logoUrl, dateRange }: { reportDa
                 <td>{t.ownerName}</td>
                 <td>{t.type === TransactionType.INFLOW ? t.payingBank : t.ownerBank}</td>
                 <td>{t.origin}</td>
-                {(reportData.type === 'outflow' || reportData.type === 'all') && <td>{t.type === TransactionType.OUTFLOW ? t.counterpartyName : '-'}</td>}
-                <td style={{ textAlign: 'right', fontWeight: 600, color: t.type === TransactionType.INFLOW ? '#15803d' : '#be123c' }}>
-                  {t.type === TransactionType.OUTFLOW ? '-' : ''}{t.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                <td>{(t.type === TransactionType.OUTFLOW || t.type === TransactionType.GROUP) ? t.counterpartyName : t.counterpartyName || '-'}</td>
+                <td style={{ 
+                  textAlign: 'right', 
+                  fontWeight: 600, 
+                  color: t.type === TransactionType.INFLOW ? '#15803d' : 
+                         t.type === TransactionType.OUTFLOW ? '#be123c' : 
+                         t.type === TransactionType.GROUP ? '#9333ea' : '#4f46e5' 
+                }}>
+                  {(t.type === TransactionType.OUTFLOW || (t.type === TransactionType.GROUP && t.amount < 0)) ? '-' : ''}{Math.abs(t.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                 </td>
                 <td>{t.notes}</td>
               </tr>
@@ -153,23 +164,28 @@ const App: React.FC = () => {
   const [isDataLoaded, setIsDataLoaded] = useState(false); 
   const [error, setError] = useState<string | null>(null);
   const [selectedCnpj, setSelectedCnpj] = useState<string | null>(null);
+  const [hasPaidApiKey, setHasPaidApiKey] = useState(false);
   
   const [registeredCompanies, setRegisteredCompanies] = useState<CompanyInfo[]>([]);
   const [isAddingCompany, setIsAddingCompany] = useState(false);
   const [newCompanyName, setNewCompanyName] = useState('');
   const [newCompanyCnpj, setNewCompanyCnpj] = useState('');
-  const [newCompanyAltNames, setNewCompanyAltNames] = useState('');
+  const [newCompanyAltNames, setNewCompanyAltNames] = useState<string[]>([]);
   const [showAddAltNames, setShowAddAltNames] = useState(false);
 
   // Manual Balance Modal States
   const [isManualBalanceModalOpen, setIsManualBalanceModalOpen] = useState(false);
   const [manualBalanceValue, setManualBalanceValue] = useState<string>('');
   const [manualBalanceDate, setManualBalanceDate] = useState<string>(new Date().toISOString().split('T')[0]);
+  const [manualBalanceCompanyCnpj, setManualBalanceCompanyCnpj] = useState<string>('');
+  const [manualBalanceBank, setManualBalanceBank] = useState<string>('');
   
+  const manualBalanceBanks = ["Inter", "Santander", "Itaú", "Cora", "Daycoval", "Banco do Brasil", "BMG", "Mercantil", "C6 Bank"];
+
   const [editingCnpj, setEditingCnpj] = useState<string | null>(null);
   const [editNameValue, setEditNameValue] = useState('');
   const [editCnpjValue, setEditCnpjValue] = useState('');
-  const [editAltNameValue, setEditAltNameValue] = useState('');
+  const [editAltNameValue, setEditAltNameValue] = useState<string[]>([]);
   const [showEditAltNames, setShowEditAltNames] = useState(false);
 
   const [usersList, setUsersList] = useState<UserInfo[]>([]);
@@ -201,6 +217,18 @@ const App: React.FC = () => {
   const uniqueCompanies = useMemo(() => {
     return registeredCompanies.filter(c => !c.hidden);
   }, [registeredCompanies]);
+
+  useEffect(() => {
+    const checkApiKey = async () => {
+      // @ts-ignore: aistudio is assumed to be globally available in the environment
+      if (window.aistudio) {
+        // @ts-ignore
+        const hasKey = await window.aistudio.hasSelectedApiKey();
+        setHasPaidApiKey(hasKey);
+      }
+    };
+    checkApiKey();
+  }, []);
 
   useEffect(() => {
     if (reportDataForPrint) {
@@ -239,8 +267,51 @@ const App: React.FC = () => {
     }
   }, [isAuthenticated]);
 
+  const handleOpenSelectKey = async () => {
+    // @ts-ignore
+    if (window.aistudio) {
+      // @ts-ignore
+      await window.aistudio.openSelectKey();
+      setHasPaidApiKey(true); // Assume sucesso após abrir
+    }
+  };
+
+  const normalizedTransactions = useMemo(() => {
+    const cnpjToNameMap = new Map<string, string>();
+    registeredCompanies.forEach(c => {
+      if (c.cnpj) {
+        cnpjToNameMap.set(c.cnpj.replace(/\D/g, ''), c.name);
+      }
+    });
+
+    const normalizeBank = (bank: string) => {
+      if (!bank) return bank;
+      const b = bank.trim();
+      const lower = b.toLowerCase();
+      // Normalização específica para Itaú conforme solicitado
+      if (lower === 'itau' || lower === 'itaú') return 'Itaú';
+      return b;
+    };
+
+    return transactions.map(t => {
+      const cleanCnpj = t.ownerCnpj ? t.ownerCnpj.replace(/\D/g, '') : '';
+      let ownerName = t.ownerName;
+      if (cleanCnpj && cnpjToNameMap.has(cleanCnpj)) {
+        ownerName = cnpjToNameMap.get(cleanCnpj)!;
+      }
+      
+      return { 
+        ...t, 
+        ownerName,
+        ownerBank: normalizeBank(t.ownerBank),
+        payingBank: normalizeBank(t.payingBank)
+      };
+    });
+  }, [transactions, registeredCompanies]);
+
   const filteredTransactions = useMemo(() => {
-    let result = [...transactions];
+    let result = [...normalizedTransactions];
+
     if (selectedCnpj) result = result.filter(t => t.ownerCnpj === selectedCnpj);
     result = result.filter(t => {
       if (!t.date) return true; 
@@ -259,8 +330,9 @@ const App: React.FC = () => {
         const value = filterValue.toLowerCase();
         result = result.filter(t => {
           if (key === 'amount') {
-            const formatted = (t.amount || 0).toLocaleString('pt-BR', { minimumFractionDigits: 2 });
-            const displayVal = (t.type === TransactionType.OUTFLOW ? '-' : '') + formatted;
+            const absVal = Math.abs(t.amount || 0);
+            const formatted = absVal.toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+            const displayVal = ((t.type === TransactionType.OUTFLOW || (t.type === TransactionType.GROUP && t.amount < 0)) ? '-' : '') + formatted;
             return displayVal.includes(filterValue);
           }
           if (key === 'date') return t.date ? t.date.split('T')[0].includes(value) : false;
@@ -270,7 +342,7 @@ const App: React.FC = () => {
       }
     });
     return result.sort((a, b) => (a.date && b.date) ? new Date(b.date).getTime() - new Date(a.date).getTime() : 0);
-  }, [transactions, selectedCnpj, startDate, endDate, searchTerm, columnFilters]);
+  }, [normalizedTransactions, selectedCnpj, startDate, endDate, searchTerm, columnFilters]);
 
   const handleFileSelect = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const files = event.target.files;
@@ -287,12 +359,17 @@ const App: React.FC = () => {
     try {
       const allExtractedTransactions: any[] = [];
       
-      // Fase 1: Análise completa pela IA (100%)
-      for (const file of pendingFiles) {
+      for (let i = 0; i < pendingFiles.length; i++) {
+        const file = pendingFiles[i];
         if (interruptRef.current) {
           throw new Error("Importação interrompida pelo usuário.");
         }
         
+        // Atraso aumentado para evitar estouro de TPM (Tokens por Minuto)
+        if (i > 0) {
+          await new Promise(resolve => setTimeout(resolve, 5000));
+        }
+
         const base64 = await new Promise<string>((resolve, reject) => {
           const reader = new FileReader();
           reader.onload = (e) => resolve(e.target?.result?.toString().split(',')[1] || "");
@@ -304,13 +381,43 @@ const App: React.FC = () => {
         allExtractedTransactions.push(...result.transactions);
       }
 
-      // Fase 2: Envio para o banco de dados (Apenas se 100% da análise concluída e não interrompido)
       if (interruptRef.current) {
         throw new Error("Importação interrompida antes do salvamento.");
       }
 
+      const groupKeywords = [
+        'C2', 'C2R', 'Moove', 'R De S', 'Finx', 'Flexx', 
+        'Capital dois Promotora', 'TC', 'BF Leme', 'RC', 
+        'Capital 2'
+      ].map(k => k.toLowerCase().trim());
+
+      const processedTransactions = allExtractedTransactions.map(t => {
+        const partyNameLower = (t.counterpartyName || '').toLowerCase().trim();
+        
+        const isRegisteredGroup = uniqueCompanies.some(c => 
+          c.name.toLowerCase() === partyNameLower ||
+          c.alternativeNames?.some(alt => alt.toLowerCase() === partyNameLower) ||
+          (c.cnpj && t.counterpartyCnpj && c.cnpj.replace(/\D/g, '') === t.counterpartyCnpj.replace(/\D/g, ''))
+        );
+
+        const isStaticGroup = groupKeywords.some(kw => 
+          partyNameLower.startsWith(kw)
+        );
+
+        if (isRegisteredGroup || isStaticGroup) {
+          const originalType = t.type;
+          return {
+            ...t,
+            type: TransactionType.GROUP,
+            origin: "Transferência entre Contas",
+            amount: originalType === TransactionType.OUTFLOW ? -Math.abs(t.amount) : Math.abs(t.amount)
+          };
+        }
+        return t;
+      });
+
       const addedTransactions: Transaction[] = [];
-      for (const t of allExtractedTransactions) {
+      for (const t of processedTransactions) {
         if (interruptRef.current) {
           throw new Error("Importação interrompida durante o salvamento.");
         }
@@ -326,15 +433,20 @@ const App: React.FC = () => {
       }
     } catch (err: any) { 
       if (err.message.includes("interrompida")) {
-          // Silencia o alerta pois o usuário já resetou a tela manualmente
           console.log("Processo interrompido com sucesso.");
+      } else if (err.message.includes("429") || err.message.includes("quota") || err.message.includes("limit")) {
+          setError("Limite de cota do Google atingido. Aguarde 60 segundos e tente novamente com menos arquivos.");
+          alert("Erro de Cota: Você excedeu o limite de processamento por minuto do Google. Por favor, aguarde um momento e tente importar menos arquivos de uma vez.");
+      } else if (err.message.includes("Requested entity was not found")) {
+          setHasPaidApiKey(false);
+          alert("Sua chave de API expirou ou é inválida. Por favor, selecione-a novamente.");
+          handleOpenSelectKey();
       } else {
           setError(err.message); 
           console.error("Erro no processamento:", err);
           alert(`Erro no processamento: ${err.message}`);
       }
     } finally { 
-      // Não resetar estados aqui se já foram resetados no clique do botão
       if (!interruptRef.current) {
         setIsLoading(false); 
       }
@@ -379,24 +491,30 @@ const App: React.FC = () => {
       return;
     }
 
+    if (!manualBalanceCompanyCnpj || !manualBalanceBank) {
+      alert("Por favor, selecione a empresa e o banco.");
+      return;
+    }
+
     setIsLoading(true);
     try {
-      const currentComp = selectedCnpj ? uniqueCompanies.find(c => c.cnpj === selectedCnpj) : null;
+      const targetCompany = uniqueCompanies.find(c => c.cnpj === manualBalanceCompanyCnpj);
+      
       const newTransaction: Omit<Transaction, 'id'> = {
         date: `${manualBalanceDate}T12:00:00`,
-        description: 'Lançamento de Saldo Manual',
-        amount: Math.abs(value),
-        type: value >= 0 ? TransactionType.INFLOW : TransactionType.OUTFLOW,
-        counterpartyName: 'Lançamento Manual',
+        description: 'Lançamento Manual de Saldo',
+        amount: value, 
+        type: TransactionType.MANUAL, 
+        counterpartyName: 'Ajuste de Saldo',
         counterpartyCnpj: '',
         paymentMethod: PaymentMethod.OUTROS,
-        payerName: value >= 0 ? 'Lançamento Manual' : (currentComp?.name || 'Saldo Inicial'),
-        origin: 'Manual',
-        payingBank: currentComp?.name || 'Manual',
-        ownerName: currentComp?.name || 'Lançamento Geral',
-        ownerCnpj: selectedCnpj || '',
-        ownerBank: 'Manual',
-        notes: 'Inclusão manual de saldo'
+        payerName: targetCompany?.name || 'Saldo Ajustado',
+        origin: 'Saldo Manual',
+        payingBank: manualBalanceBank,
+        ownerName: targetCompany?.name || 'Saldo Ajustado Geral',
+        ownerCnpj: manualBalanceCompanyCnpj,
+        ownerBank: manualBalanceBank,
+        notes: 'Inclusão corretiva de saldo manual'
       };
 
       const docRef = await addDoc(collection(db, "transactions"), newTransaction);
@@ -404,6 +522,7 @@ const App: React.FC = () => {
       
       setIsManualBalanceModalOpen(false);
       setManualBalanceValue('');
+      setManualBalanceBank('');
       alert("Saldo manual incluído com sucesso!");
     } catch (err) {
       console.error("Erro ao salvar saldo manual:", err);
@@ -418,12 +537,12 @@ const App: React.FC = () => {
     const newCompany: CompanyInfo = { 
       name: newCompanyName.trim(), 
       cnpj: newCompanyCnpj.trim() || '', 
-      alternativeNames: newCompanyAltNames ? newCompanyAltNames.split(',').map(n => n.trim()).filter(Boolean) : [],
+      alternativeNames: newCompanyAltNames.filter(n => n.trim() !== ''),
       hidden: false
     };
     const docRef = await addDoc(collection(db, "companies"), newCompany);
     setRegisteredCompanies(prev => [...prev, { ...newCompany, id: docRef.id }]);
-    setNewCompanyName(''); setNewCompanyCnpj(''); setNewCompanyAltNames(''); setIsAddingCompany(false);
+    setNewCompanyName(''); setNewCompanyCnpj(''); setNewCompanyAltNames([]); setIsAddingCompany(false);
     setShowAddAltNames(false);
   };
 
@@ -431,9 +550,9 @@ const App: React.FC = () => {
     setEditingCnpj(company.cnpj || company.name); 
     setEditNameValue(company.name);
     setEditCnpjValue(company.cnpj);
-    const altNames = company.alternativeNames?.join(', ') || '';
+    const altNames = company.alternativeNames || [];
     setEditAltNameValue(altNames);
-    setShowEditAltNames(!!altNames);
+    setShowEditAltNames(altNames.length > 0);
   };
 
   const saveCompanyEdit = async (identifier: string) => {
@@ -442,7 +561,7 @@ const App: React.FC = () => {
 
     const updates: Partial<CompanyInfo> = {
       cnpj: editCnpjValue.trim(),
-      alternativeNames: editAltNameValue ? editAltNameValue.split(',').map(n => n.trim()).filter(Boolean) : []
+      alternativeNames: editAltNameValue.filter(n => n.trim() !== '')
     };
 
     const newName = editNameValue.trim();
@@ -547,7 +666,10 @@ const App: React.FC = () => {
                 <>
                   {currentUser?.role === 'admin' && (
                     <button 
-                      onClick={() => setIsManualBalanceModalOpen(true)}
+                      onClick={() => {
+                        setManualBalanceCompanyCnpj(selectedCnpj || '');
+                        setIsManualBalanceModalOpen(true);
+                      }}
                       className="bg-emerald-50 hover:bg-emerald-100 text-emerald-700 px-5 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-colors border border-emerald-100"
                     >
                       <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -647,7 +769,7 @@ const App: React.FC = () => {
                               <h3 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] px-4">Sessão: Histórico Detalhado</h3>
                               <div className="h-px flex-1 bg-slate-100"></div>
                             </div>
-                            <TransactionTable transactions={filteredTransactions} allTransactions={transactions} onUpdateTransaction={handleUpdateTransaction} selectedCnpj={selectedCnpj} columnFilters={columnFilters} onColumnFilterChange={(f, v) => setColumnFilters(p => ({ ...p, [f]: v }))} />
+                            <TransactionTable transactions={filteredTransactions} allTransactions={normalizedTransactions} onUpdateTransaction={handleUpdateTransaction} selectedCnpj={selectedCnpj} columnFilters={columnFilters} onColumnFilterChange={(f, v) => setColumnFilters(p => ({ ...p, [f]: v }))} />
                           </section>
                         )}
                       </div>
@@ -662,7 +784,29 @@ const App: React.FC = () => {
               } />
               <Route path="/import" element={
                 <div className="max-w-4xl mx-auto">
-                  <h2 className="text-2xl font-black mb-8">Importação de Extratos</h2>
+                  <div className="flex justify-between items-start mb-8">
+                    <h2 className="text-2xl font-black">Importação de Extratos</h2>
+                    <div className="flex flex-col items-end gap-2">
+                       <button 
+                        onClick={handleOpenSelectKey}
+                        className={`px-5 py-2 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all border ${
+                          hasPaidApiKey 
+                          ? 'bg-emerald-50 text-emerald-600 border-emerald-100' 
+                          : 'bg-indigo-600 text-white shadow-lg shadow-indigo-100'
+                        }`}
+                      >
+                        {hasPaidApiKey ? 'Chave de Faturamento Ativa' : 'Configurar Faturamento (Pay-as-you-go)'}
+                      </button>
+                      <a 
+                        href="https://ai.google.dev/gemini-api/docs/billing" 
+                        target="_blank" 
+                        rel="noopener noreferrer"
+                        className="text-[9px] font-bold text-slate-400 hover:text-indigo-600"
+                      >
+                        Saiba mais sobre o faturamento
+                      </a>
+                    </div>
+                  </div>
                   {isLoading ? (
                     <div className="text-center py-20 bg-white rounded-[2rem] border border-slate-100 shadow-sm flex flex-col items-center">
                       <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-600 mx-auto mb-4"></div>
@@ -671,13 +815,19 @@ const App: React.FC = () => {
                       <button 
                         onClick={() => { 
                           interruptRef.current = true;
-                          setIsLoading(false); // Reseta a interface instantaneamente
-                          setPendingFiles([]); // Retorna ao estado inicial da aba
+                          setIsLoading(false); 
+                          setPendingFiles([]); 
                         }}
                         className="mt-10 bg-rose-50 hover:bg-rose-100 text-rose-600 px-8 py-3 rounded-2xl text-xs font-black uppercase tracking-widest transition-all border border-rose-100 shadow-sm"
                       >
                         Interromper Importação
                       </button>
+                      {error && (
+                         <div className="mt-8 p-4 bg-rose-50 border border-rose-100 rounded-xl max-w-lg">
+                           <p className="text-rose-600 text-xs font-black uppercase mb-1">Erro de Processamento:</p>
+                           <p className="text-rose-700 text-xs font-bold leading-relaxed">{error}</p>
+                         </div>
+                      )}
                     </div>
                   ) : pendingFiles.length > 0 ? (
                     <div className="bg-white p-10 rounded-[2.5rem] border border-slate-100 shadow-xl animate-in zoom-in duration-300">
@@ -761,26 +911,51 @@ const App: React.FC = () => {
                         </div>
                         {isEditing ? (
                           <div className="space-y-3">
-                            <input className="w-full border rounded-lg p-2 font-bold text-xs" value={editNameValue} onChange={e => setEditNameValue(e.target.value)} placeholder="Nome" />
+                            <input className="w-full border rounded-lg p-2 font-bold text-xs" value={editNameValue} onChange={e => setEditNameValue(e.target.value)} placeholder="Nome Principal" />
                             <input className="w-full border rounded-lg p-2 font-bold text-xs" value={editCnpjValue} onChange={e => setEditCnpjValue(e.target.value)} placeholder="CNPJ" />
-                            { showEditAltNames ? (
-                                <textarea 
-                                    className="w-full border rounded-lg p-2 font-bold text-xs" 
-                                    value={editAltNameValue} 
-                                    onChange={e => setEditAltNameValue(e.target.value)} 
-                                    placeholder="Nomes, separados por vírgula" 
-                                    rows={2}
-                                    autoFocus
-                                />
-                            ) : (
-                                <button 
-                                    type="button" 
-                                    onClick={() => setShowEditAltNames(true)} 
-                                    className="text-xs text-left font-bold text-indigo-600 hover:underline pt-1"
-                                >
-                                    Esse CNPJ possui outros nomes?
-                                </button>
-                            )}
+                            
+                            <div className="mt-4 pt-4 border-t border-slate-200/60">
+                                <div className="flex justify-between items-center mb-2">
+                                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Nomes Alternativos</p>
+                                    <button 
+                                        type="button" 
+                                        onClick={() => setEditAltNameValue([...editAltNameValue, ''])}
+                                        className="w-6 h-6 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center hover:bg-indigo-100 transition-colors"
+                                    >
+                                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                                        </svg>
+                                    </button>
+                                </div>
+                                <div className="space-y-2">
+                                    {editAltNameValue.map((name, idx) => (
+                                        <div key={idx} className="flex gap-2">
+                                            <input 
+                                                className="flex-1 border rounded-lg p-2 font-bold text-[11px] outline-none focus:border-indigo-300" 
+                                                value={name} 
+                                                onChange={e => {
+                                                    const newList = [...editAltNameValue];
+                                                    newList[idx] = e.target.value;
+                                                    setEditAltNameValue(newList);
+                                                }} 
+                                                placeholder="Nomenclatura alternativa" 
+                                            />
+                                            <button 
+                                                type="button" 
+                                                onClick={() => setEditAltNameValue(editAltNameValue.filter((_, i) => i !== idx))}
+                                                className="text-rose-400 hover:text-rose-600 p-1"
+                                            >
+                                                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                                </svg>
+                                            </button>
+                                        </div>
+                                    ))}
+                                    {editAltNameValue.length === 0 && (
+                                        <p className="text-[10px] italic text-slate-300">Nenhum nome alternativo cadastrado.</p>
+                                    )}
+                                </div>
+                            </div>
                           </div>
                         ) : (
                           <>
@@ -801,29 +976,81 @@ const App: React.FC = () => {
                   {isAddingCompany && (
                     <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-[100]">
                       <div className="bg-white p-10 rounded-[2.5rem] w-full max-w-md shadow-2xl">
-                        <h3 className="text-2xl font-black mb-6">Nova Empresa</h3>
+                        <div className="flex justify-between items-center mb-6">
+                            <h3 className="text-2xl font-black">Nova Empresa</h3>
+                            <div className="h-10 w-10 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-600">
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                                </svg>
+                            </div>
+                        </div>
                         <form onSubmit={handleAddCompany} className="space-y-4">
-                          <input required placeholder="Nome / Razão Principal" value={newCompanyName} onChange={e => setNewCompanyName(e.target.value)} className="w-full p-4 bg-slate-50 border rounded-xl font-bold text-sm" />
-                          <input placeholder="CNPJ" value={newCompanyCnpj} onChange={e => setNewCompanyCnpj(e.target.value)} className="w-full p-4 bg-slate-50 border rounded-xl font-bold text-sm" />
-                          { showAddAltNames ? (
-                              <textarea
-                                  placeholder="Nomenclaturas alternativas (separadas por vírgula)"
-                                  value={newCompanyAltNames} 
-                                  onChange={e => setNewCompanyAltNames(e.target.value)} 
-                                  className="w-full p-4 bg-slate-50 border rounded-xl font-bold text-sm"
-                                  rows={2}
-                                  autoFocus
-                              />
-                          ) : (
-                              <button
-                                  type="button"
-                                  onClick={() => setShowAddAltNames(true)}
-                                  className="w-full text-left text-sm font-bold text-indigo-600 hover:underline p-2"
-                              >
-                                  + Esse CNPJ possui outros nomes?
-                              </button>
-                          )}
-                          <div className="flex gap-3 pt-6"><button type="submit" className="flex-1 bg-indigo-600 text-white py-4 rounded-xl font-black uppercase text-xs">Salvar</button><button type="button" onClick={() => { setIsAddingCompany(false); setShowAddAltNames(false); }} className="flex-1 bg-slate-100 py-4 rounded-xl font-black uppercase text-xs">Cancelar</button></div>
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">Razão / Nome Principal</label>
+                            <input required placeholder="Ex: Capital Dois Gestão Ltda" value={newCompanyName} onChange={e => setNewCompanyName(e.target.value)} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm focus:ring-2 focus:ring-indigo-400 outline-none transition-all" />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">CNPJ</label>
+                            <input placeholder="00.000.000/0000-00" value={newCompanyCnpj} onChange={e => setNewCompanyCnpj(e.target.value)} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm focus:ring-2 focus:ring-indigo-400 outline-none transition-all" />
+                          </div>
+                          
+                          <div className="pt-2">
+                            <div className="flex justify-between items-center mb-2 px-2">
+                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Nomes Alternativos</label>
+                                <button 
+                                    type="button" 
+                                    onClick={() => setNewCompanyAltNames([...newCompanyAltNames, ''])}
+                                    className="w-6 h-6 rounded-full bg-indigo-600 text-white flex items-center justify-center hover:bg-indigo-700 transition-colors shadow-sm"
+                                    title="Incluir outro nome"
+                                >
+                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
+                                    </svg>
+                                </button>
+                            </div>
+                            <div className="space-y-2 max-h-40 overflow-y-auto custom-scrollbar p-1">
+                                {newCompanyAltNames.map((name, idx) => (
+                                    <div key={idx} className="flex gap-2 animate-in slide-in-from-top-1 duration-200">
+                                        <input 
+                                            className="flex-1 bg-white border border-slate-200 rounded-xl p-3 font-bold text-xs outline-none focus:border-indigo-300" 
+                                            value={name} 
+                                            onChange={e => {
+                                                const newList = [...newCompanyAltNames];
+                                                newList[idx] = e.target.value;
+                                                setNewCompanyAltNames(newList);
+                                            }} 
+                                            placeholder="Outra forma que aparece no extrato" 
+                                        />
+                                        <button 
+                                            type="button" 
+                                            onClick={() => setNewCompanyAltNames(newCompanyAltNames.filter((_, i) => i !== idx))}
+                                            className="text-rose-400 hover:text-rose-600 p-2"
+                                        >
+                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                                                <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                            </svg>
+                                        </button>
+                                    </div>
+                                ))}
+                                {newCompanyAltNames.length === 0 && (
+                                    <div className="bg-slate-50 border border-dashed border-slate-200 rounded-xl p-4 text-center">
+                                        <p className="text-[10px] font-bold text-slate-400 uppercase">Esse CNPJ possui outros nomes?</p>
+                                        <button 
+                                            type="button" 
+                                            onClick={() => setNewCompanyAltNames([''])}
+                                            className="text-xs font-black text-indigo-600 mt-1 hover:underline"
+                                        >
+                                            + Clique aqui para incluir
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                          </div>
+
+                          <div className="flex gap-3 pt-6">
+                            <button type="submit" className="flex-1 bg-indigo-600 text-white py-4 rounded-xl font-black uppercase text-xs hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100">Salvar Empresa</button>
+                            <button type="button" onClick={() => { setIsAddingCompany(false); setNewCompanyAltNames([]); }} className="flex-1 bg-slate-100 py-4 rounded-xl font-black uppercase text-xs hover:bg-slate-200 transition-all">Cancelar</button>
+                          </div>
                         </form>
                       </div>
                     </div>
@@ -926,39 +1153,61 @@ const App: React.FC = () => {
           <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-[100]">
             <div className="bg-white p-10 rounded-[2.5rem] w-full max-md shadow-2xl">
               <h3 className="text-2xl font-black mb-2">Incluir Saldo Manual</h3>
-              <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-6">Insira o valor e a data do saldo</p>
+              <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-6">Insira o valor e os detalhes do saldo</p>
               <form onSubmit={handleSaveManualBalance} className="space-y-4">
                 <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-400 uppercase">Empresa (Opcional)</label>
-                  <div className="w-full p-4 bg-slate-50 border rounded-xl font-black text-sm text-indigo-600">
-                    {selectedCnpj ? uniqueCompanies.find(c => c.cnpj === selectedCnpj)?.name : "Geral / Não Especificada"}
-                  </div>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Empresa</label>
+                  <select 
+                    required 
+                    value={manualBalanceCompanyCnpj} 
+                    onChange={e => setManualBalanceCompanyCnpj(e.target.value)}
+                    className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm text-indigo-600 focus:ring-2 focus:ring-indigo-400 outline-none transition-all appearance-none"
+                  >
+                    <option value="">Selecione uma Empresa</option>
+                    {uniqueCompanies.map(c => <option key={c.cnpj || c.id} value={c.cnpj}>{c.name}</option>)}
+                  </select>
                 </div>
+                
                 <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-400 uppercase">Valor (R$)</label>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Banco</label>
+                  <select 
+                    required 
+                    value={manualBalanceBank} 
+                    onChange={e => setManualBalanceBank(e.target.value)}
+                    className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm text-indigo-600 focus:ring-2 focus:ring-indigo-400 outline-none transition-all appearance-none"
+                  >
+                    <option value="">Selecione um Banco</option>
+                    {manualBalanceBanks.map(b => <option key={b} value={b}>{b}</option>)}
+                  </select>
+                </div>
+
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Valor (R$)</label>
                   <input 
                     required 
                     type="text"
                     placeholder="Ex: 5000,00" 
                     value={manualBalanceValue} 
                     onChange={e => setManualBalanceValue(e.target.value)} 
-                    className="w-full p-4 bg-slate-50 border rounded-xl font-bold text-sm focus:ring-2 focus:ring-indigo-400 outline-none transition-all" 
+                    className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm focus:ring-2 focus:ring-indigo-400 outline-none transition-all" 
                   />
-                  <p className="text-[9px] text-slate-400 font-medium">Use sinal de menos (-) para saídas.</p>
+                  <p className="text-[9px] text-slate-400 font-medium">Lançamentos de saldo atualizam o saldo líquido total sem somar em Entradas.</p>
                 </div>
+
                 <div className="space-y-1">
-                  <label className="text-[10px] font-black text-slate-400 uppercase">Data do Lançamento</label>
+                  <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-1">Data do Lançamento</label>
                   <input 
                     required 
                     type="date"
                     value={manualBalanceDate} 
                     onChange={e => setManualBalanceDate(e.target.value)} 
-                    className="w-full p-4 bg-slate-50 border rounded-xl font-bold text-sm focus:ring-2 focus:ring-indigo-400 outline-none transition-all" 
+                    className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm focus:ring-2 focus:ring-indigo-400 outline-none transition-all" 
                   />
                 </div>
+
                 <div className="flex gap-3 pt-6">
                   <button type="submit" className="flex-1 bg-indigo-600 text-white py-4 rounded-xl font-black uppercase text-xs hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100">
-                    Salvar Lançamento
+                    Confirmar
                   </button>
                   <button type="button" onClick={() => setIsManualBalanceModalOpen(false)} className="flex-1 bg-slate-100 py-4 rounded-xl font-black uppercase text-xs hover:bg-slate-200 transition-all">
                     Cancelar
