@@ -180,7 +180,7 @@ const App: React.FC = () => {
   const [manualBalanceCompanyCnpj, setManualBalanceCompanyCnpj] = useState<string>('');
   const [manualBalanceBank, setManualBalanceBank] = useState<string>('');
   
-  const manualBalanceBanks = ["Inter", "Santander", "Itaú", "Cora", "Daycoval", "Banco do Brasil", "BMG", "Mercantil", "C6 Bank"];
+  const manualBalanceBanks = ["Banco Inter", "Santander", "Itaú", "Cora", "Daycoval", "Banco do Brasil", "BMG", "Mercantil", "C6 Bank"];
 
   const [editingCnpj, setEditingCnpj] = useState<string | null>(null);
   const [editNameValue, setEditNameValue] = useState('');
