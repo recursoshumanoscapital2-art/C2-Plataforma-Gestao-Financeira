@@ -25,18 +25,14 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, selectedCnpj }) => 
       if (t.type === TransactionType.INFLOW) acc.totalInflow += val;
       else if (t.type === TransactionType.OUTFLOW) acc.totalOutflow += val;
       else if (t.type === TransactionType.MANUAL) acc.totalManual += t.amount;
-      else if (t.type === TransactionType.GROUP) {
-        acc.totalGroup += t.amount;
-      }
       return acc;
-    }, { totalInflow: 0, totalOutflow: 0, totalManual: 0, totalGroup: 0 });
+    }, { totalInflow: 0, totalOutflow: 0, totalManual: 0 });
   }, [transactions]);
 
   const timelineData = useMemo(() => {
     const days: Record<string, { date: string, inflow: number, outflow: number }> = {};
     transactions.forEach(t => {
-      // Transações do tipo GRUPO não aparecem no gráfico de evolução financeira de entradas/saídas
-      if (t.type === TransactionType.MANUAL || t.type === TransactionType.GROUP) return; 
+      if (t.type === TransactionType.MANUAL) return; 
       const day = t.date.split('T')[0];
       if (!days[day]) days[day] = { date: day, inflow: 0, outflow: 0 };
       
@@ -47,8 +43,8 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, selectedCnpj }) => 
     return Object.values(days).sort((a, b) => a.date.localeCompare(b.date));
   }, [transactions]);
 
-  // Saldo Líquido no Período computa Entradas - Saídas + Ajustes Manuais
-  const netBalance = summary.totalInflow - summary.totalOutflow + summary.totalManual;
+  // Saldo Líquido no Período: Saldo Manual (ponto de partida) + Entradas - Saídas
+  const netBalance = summary.totalManual + summary.totalInflow - summary.totalOutflow;
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
