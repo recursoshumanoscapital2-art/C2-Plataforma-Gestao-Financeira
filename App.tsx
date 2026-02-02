@@ -61,8 +61,8 @@ const PrintLayout = ({ reportData, companyInfo, logoUrl, dateRange }: { reportDa
     }, { totalInflow: 0, totalOutflow: 0, totalManual: 0 });
   }, [reportData.data]);
 
-  // Saldo Líquido: Entradas - Saídas + Ajustes Manuais
-  const balance = summary.totalInflow - summary.totalOutflow + summary.totalManual;
+  // Saldo Líquido: Saldo Manual (ponto de partida) + Entradas - Saídas
+  const balance = summary.totalManual + summary.totalInflow - summary.totalOutflow;
 
   return (
     <div id="report-print-area">
@@ -123,15 +123,14 @@ const PrintLayout = ({ reportData, companyInfo, logoUrl, dateRange }: { reportDa
                 <td>{t.ownerName}</td>
                 <td>{t.type === TransactionType.INFLOW ? t.payingBank : t.ownerBank}</td>
                 <td>{t.origin}</td>
-                <td>{(t.type === TransactionType.OUTFLOW || t.type === TransactionType.GROUP) ? t.counterpartyName : t.counterpartyName || '-'}</td>
+                <td>{t.counterpartyName || '-'}</td>
                 <td style={{ 
                   textAlign: 'right', 
                   fontWeight: 600, 
                   color: t.type === TransactionType.INFLOW ? '#15803d' : 
-                         t.type === TransactionType.OUTFLOW ? '#be123c' : 
-                         t.type === TransactionType.GROUP ? '#9333ea' : '#4f46e5' 
+                         t.type === TransactionType.OUTFLOW ? '#be123c' : '#4f46e5' 
                 }}>
-                  {(t.type === TransactionType.OUTFLOW || (t.type === TransactionType.GROUP && t.amount < 0)) ? '-' : ''}{Math.abs(t.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                  {t.type === TransactionType.OUTFLOW ? '-' : ''}{Math.abs(t.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
                 </td>
                 <td>{t.notes}</td>
               </tr>
@@ -332,7 +331,7 @@ const App: React.FC = () => {
           if (key === 'amount') {
             const absVal = Math.abs(t.amount || 0);
             const formatted = absVal.toLocaleString('pt-BR', { minimumFractionDigits: 2 });
-            const displayVal = ((t.type === TransactionType.OUTFLOW || (t.type === TransactionType.GROUP && t.amount < 0)) ? '-' : '') + formatted;
+            const displayVal = (t.type === TransactionType.OUTFLOW ? '-' : '') + formatted;
             return displayVal.includes(filterValue);
           }
           if (key === 'date') return t.date ? t.date.split('T')[0].includes(value) : false;
@@ -385,39 +384,8 @@ const App: React.FC = () => {
         throw new Error("Importação interrompida antes do salvamento.");
       }
 
-      const groupKeywords = [
-        'C2', 'C2R', 'Moove', 'R De S', 'Finx', 'Flexx', 
-        'Capital dois Promotora', 'TC', 'BF Leme', 'RC', 
-        'Capital 2'
-      ].map(k => k.toLowerCase().trim());
-
-      const processedTransactions = allExtractedTransactions.map(t => {
-        const partyNameLower = (t.counterpartyName || '').toLowerCase().trim();
-        
-        const isRegisteredGroup = uniqueCompanies.some(c => 
-          c.name.toLowerCase() === partyNameLower ||
-          c.alternativeNames?.some(alt => alt.toLowerCase() === partyNameLower) ||
-          (c.cnpj && t.counterpartyCnpj && c.cnpj.replace(/\D/g, '') === t.counterpartyCnpj.replace(/\D/g, ''))
-        );
-
-        const isStaticGroup = groupKeywords.some(kw => 
-          partyNameLower.startsWith(kw)
-        );
-
-        if (isRegisteredGroup || isStaticGroup) {
-          const originalType = t.type;
-          return {
-            ...t,
-            type: TransactionType.GROUP,
-            origin: "Transferência entre Contas",
-            amount: originalType === TransactionType.OUTFLOW ? -Math.abs(t.amount) : Math.abs(t.amount)
-          };
-        }
-        return t;
-      });
-
       const addedTransactions: Transaction[] = [];
-      for (const t of processedTransactions) {
+      for (const t of allExtractedTransactions) {
         if (interruptRef.current) {
           throw new Error("Importação interrompida durante o salvamento.");
         }
