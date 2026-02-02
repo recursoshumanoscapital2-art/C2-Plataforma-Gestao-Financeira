@@ -322,6 +322,8 @@ const App: React.FC = () => {
   });
 
   const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
+  const [isGroupFilterModalOpen, setIsGroupFilterModalOpen] = useState(false);
+  const [pendingReportType, setPendingReportType] = useState<'inflow' | 'outflow' | 'all' | null>(null);
   const [reportDataForPrint, setReportDataForPrint] = useState<{ title: string; data: Transaction[]; type: 'inflow' | 'outflow' | 'all' } | null>(null);
 
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
@@ -749,17 +751,25 @@ const App: React.FC = () => {
     setPasswordVisibility(prev => ({ ...prev, [id]: !prev[id] }));
   };
 
-  const handleGeneratePdf = (type: 'inflow' | 'outflow' | 'all') => {
-    let data = filteredTransactions;
+  const handleGeneratePdf = (type: 'inflow' | 'outflow' | 'all', includeGroupTransfers: boolean) => {
+    let data = [...filteredTransactions];
+    
+    // Filtrar transferências de grupo se o usuário escolheu "Não"
+    if (!includeGroupTransfers) {
+      data = data.filter(t => t.origin !== "Transf. entre Contas Grupo");
+    }
+
     let title = "Relatório Geral de Transações";
     if (type === 'inflow') {
-      data = filteredTransactions.filter(t => t.type === TransactionType.INFLOW);
+      data = data.filter(t => t.type === TransactionType.INFLOW);
       title = "Relatório de Entradas";
     } else if (type === 'outflow') {
-      data = filteredTransactions.filter(t => t.type === TransactionType.OUTFLOW);
+      data = data.filter(t => t.type === TransactionType.OUTFLOW);
       title = "Relatório de Saídas";
     }
     setReportDataForPrint({ title, data, type });
+    setIsGroupFilterModalOpen(false);
+    setPendingReportType(null);
   };
   
   const handleLoginSuccess = (user: UserInfo) => {
@@ -834,7 +844,7 @@ const App: React.FC = () => {
                       className="bg-rose-50 hover:bg-rose-100 text-rose-600 px-5 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-colors border border-rose-100"
                     >
                       <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                       </svg>
                       Limpar Tudo
                     </button>
@@ -1108,7 +1118,7 @@ const App: React.FC = () => {
                                                 className="text-rose-400 hover:text-rose-600 p-1"
                                             >
                                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                                    <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                                                 </svg>
                                             </button>
                                         </div>
@@ -1189,7 +1199,7 @@ const App: React.FC = () => {
                                             className="text-rose-400 hover:text-rose-600 p-2"
                                         >
                                             <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                                <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                                                <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                                             </svg>
                                         </button>
                                     </div>
@@ -1387,19 +1397,19 @@ const App: React.FC = () => {
               <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-8">Selecione o tipo de relatório</p>
               <div className="space-y-4">
                 <button 
-                  onClick={() => { handleGeneratePdf('inflow'); setIsPdfModalOpen(false); }}
+                  onClick={() => { setPendingReportType('inflow'); setIsPdfModalOpen(false); setIsGroupFilterModalOpen(true); }}
                   className="w-full bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-black py-4 rounded-2xl text-sm uppercase tracking-widest transition-all border border-emerald-100"
                 >
                   Relatório de Entradas
                 </button>
                 <button 
-                  onClick={() => { handleGeneratePdf('outflow'); setIsPdfModalOpen(false); }}
+                  onClick={() => { setPendingReportType('outflow'); setIsPdfModalOpen(false); setIsGroupFilterModalOpen(true); }}
                   className="w-full bg-rose-50 text-rose-700 hover:bg-rose-100 font-black py-4 rounded-2xl text-sm uppercase tracking-widest transition-all border border-rose-100"
                 >
                   Relatório de Saídas
                 </button>
                 <button 
-                  onClick={() => { handleGeneratePdf('all'); setIsPdfModalOpen(false); }}
+                  onClick={() => { setPendingReportType('all'); setIsPdfModalOpen(false); setIsGroupFilterModalOpen(true); }}
                   className="w-full bg-slate-800 text-white hover:bg-black font-black py-4 rounded-2xl text-sm uppercase tracking-widest transition-all"
                 >
                   Relatório Geral
@@ -1410,6 +1420,42 @@ const App: React.FC = () => {
                 className="mt-8 text-xs font-bold text-slate-400 hover:text-slate-600"
               >
                 Cancelar
+              </button>
+            </div>
+          </div>
+        )}
+
+        {isGroupFilterModalOpen && (
+          <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-[110]">
+            <div className="bg-white p-10 rounded-[2.5rem] w-full max-w-sm shadow-2xl text-center animate-in zoom-in duration-200">
+              <div className="w-16 h-16 bg-indigo-50 rounded-full flex items-center justify-center mx-auto mb-6">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
+                </svg>
+              </div>
+              <h3 className="text-xl font-black mb-4">Inclusão de Grupo</h3>
+              <p className="text-sm text-slate-600 font-bold mb-8 leading-relaxed">
+                Você deseja baixar o PDF com <span className="text-indigo-600">Transf. entre Contas Grupo</span>?
+              </p>
+              <div className="flex gap-4">
+                <button 
+                  onClick={() => pendingReportType && handleGeneratePdf(pendingReportType, true)}
+                  className="flex-1 bg-indigo-600 text-white font-black py-4 rounded-2xl text-xs uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100"
+                >
+                  Sim
+                </button>
+                <button 
+                  onClick={() => pendingReportType && handleGeneratePdf(pendingReportType, false)}
+                  className="flex-1 bg-slate-100 text-slate-600 font-black py-4 rounded-2xl text-xs uppercase tracking-widest hover:bg-slate-200 transition-all"
+                >
+                  Não
+                </button>
+              </div>
+              <button 
+                onClick={() => { setIsGroupFilterModalOpen(false); setPendingReportType(null); }}
+                className="mt-6 text-[10px] font-black uppercase text-slate-400 hover:text-slate-600 tracking-widest"
+              >
+                Cancelar Exportação
               </button>
             </div>
           </div>
