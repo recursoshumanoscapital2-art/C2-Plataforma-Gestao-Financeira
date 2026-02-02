@@ -22,21 +22,31 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, selectedCnpj }) => 
   const summary = useMemo(() => {
     return transactions.reduce((acc, t) => {
       if (t.type === TransactionType.INFLOW) acc.totalInflow += t.amount;
-      else acc.totalOutflow += t.amount;
+      else if (t.type === TransactionType.OUTFLOW) acc.totalOutflow += t.amount;
+      else if (t.type === TransactionType.MANUAL) acc.totalManual += t.amount;
+      else if (t.type === TransactionType.GROUP) {
+        acc.totalGroup += t.amount;
+      }
       return acc;
-    }, { totalInflow: 0, totalOutflow: 0 });
+    }, { totalInflow: 0, totalOutflow: 0, totalManual: 0, totalGroup: 0 });
   }, [transactions]);
 
   const timelineData = useMemo(() => {
     const days: Record<string, { date: string, inflow: number, outflow: number }> = {};
     transactions.forEach(t => {
+      // Transações do tipo GRUPO não aparecem no gráfico de evolução financeira de entradas/saídas
+      if (t.type === TransactionType.MANUAL || t.type === TransactionType.GROUP) return; 
       const day = t.date.split('T')[0];
       if (!days[day]) days[day] = { date: day, inflow: 0, outflow: 0 };
+      
       if (t.type === TransactionType.INFLOW) days[day].inflow += t.amount;
-      else days[day].outflow += t.amount;
+      else if (t.type === TransactionType.OUTFLOW) days[day].outflow += t.amount;
     });
     return Object.values(days).sort((a, b) => a.date.localeCompare(b.date));
   }, [transactions]);
+
+  // Conforme solicitado, transações do tipo GRUPO não alteram o Saldo Líquido no Período
+  const netBalance = summary.totalInflow - summary.totalOutflow + summary.totalManual;
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
@@ -77,12 +87,17 @@ const Dashboard: React.FC<DashboardProps> = ({ transactions, selectedCnpj }) => 
           </div>
 
           <div className="pt-5 border-t border-slate-100">
-            <p className="text-[10px] text-slate-400 font-bold mb-1 uppercase tracking-widest">Saldo Líquido no Período</p>
+            <div className="flex justify-between items-end mb-1">
+              <p className="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Saldo Líquido no Período</p>
+              {summary.totalManual !== 0 && (
+                <span className="text-[8px] text-indigo-500 font-black uppercase">Inclui Ajustes Manuais</span>
+              )}
+            </div>
             <div className="flex items-center justify-between">
-              <p className={`text-3xl font-black ${summary.totalInflow - summary.totalOutflow >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
-                R$ {(summary.totalInflow - summary.totalOutflow).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+              <p className={`text-3xl font-black ${netBalance >= 0 ? 'text-emerald-600' : 'text-rose-600'}`}>
+                R$ {netBalance.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
               </p>
-              <div className={`w-3 h-3 rounded-full ${summary.totalInflow - summary.totalOutflow >= 0 ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400 animate-pulse'}`}></div>
+              <div className={`w-3 h-3 rounded-full ${netBalance >= 0 ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400 animate-pulse'}`}></div>
             </div>
           </div>
         </div>
