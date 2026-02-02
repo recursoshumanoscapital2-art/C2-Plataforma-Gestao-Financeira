@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import { Transaction, TransactionType, PaymentMethod } from './types';
@@ -51,6 +52,10 @@ export interface UserInfo {
 }
 
 const PrintLayout = ({ reportData, companyInfo, logoUrl, dateRange }: { reportData: { title: string; data: Transaction[]; type: 'inflow' | 'outflow' | 'all' }, companyInfo: any, logoUrl: string | null, dateRange: { start: string, end: string } }) => {
+  // Helper to format currency consistently and avoid toLocaleString argument issues
+  const formatCurrency = (val: number) => new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(val);
+
+  // Fix: Explicitly type the accumulator in reduce to avoid 'unknown' type errors for summary properties.
   const summary = useMemo(() => {
     return reportData.data.reduce((acc, t) => {
       const val = Math.abs(t.amount);
@@ -58,7 +63,7 @@ const PrintLayout = ({ reportData, companyInfo, logoUrl, dateRange }: { reportDa
       else if (t.type === TransactionType.OUTFLOW) acc.totalOutflow += val;
       else if (t.type === TransactionType.MANUAL) acc.totalManual += t.amount;
       return acc;
-    }, { totalInflow: 0, totalOutflow: 0, totalManual: 0 });
+    }, { totalInflow: 0, totalOutflow: 0, totalManual: 0 } as { totalInflow: number; totalOutflow: number; totalManual: number });
   }, [reportData.data]);
 
   const companySummaries = useMemo(() => {
@@ -69,15 +74,12 @@ const PrintLayout = ({ reportData, companyInfo, logoUrl, dateRange }: { reportDa
     }> = {};
 
     reportData.data.forEach(t => {
-      // Normalização pelo começo do nome para evitar duplicados por variações como "Ltda"
-      const rawName = t.ownerName.trim();
-      const baseName = rawName.split('  ')[0].split(' LTDA')[0].split(' ME')[0].split(' EIRELI')[0].trim();
-      
-      const compKey = baseName.toUpperCase();
+      // Como os dados já chegam normalizados pelo App.tsx, usamos o ownerName direto
+      const compKey = t.ownerName.trim().toUpperCase();
       const bank = t.type === TransactionType.INFLOW ? t.payingBank : t.ownerBank;
       
       if (!groups[compKey]) {
-        groups[compKey] = { name: baseName, total: 0, banks: {} };
+        groups[compKey] = { name: t.ownerName, total: 0, banks: {} };
       }
 
       const val = t.amount;
@@ -119,19 +121,19 @@ const PrintLayout = ({ reportData, companyInfo, logoUrl, dateRange }: { reportDa
           {(reportData.type === 'inflow' || reportData.type === 'all') && (
             <div className="summary-card" style={{ backgroundColor: '#f0fdf4', borderColor: '#bbf7d0' }}>
               <p>Total de Entradas</p>
-              <h3 style={{ color: '#166534' }}>R$ {summary.totalInflow.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h3>
+              <h3 style={{ color: '#166534' }}>R$ {formatCurrency(summary.totalInflow)}</h3>
             </div>
           )}
           {(reportData.type === 'outflow' || reportData.type === 'all') && (
             <div className="summary-card" style={{ backgroundColor: '#fff1f2', borderColor: '#fecdd3' }}>
               <p>Total de Saídas</p>
-              <h3 style={{ color: '#9f1239' }}>R$ {summary.totalOutflow.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h3>
+              <h3 style={{ color: '#9f1239' }}>R$ {formatCurrency(summary.totalOutflow)}</h3>
             </div>
           )}
           {reportData.type === 'all' && (
             <div className="summary-card" style={{ backgroundColor: balance >= 0 ? '#f0f9ff' : '#bae6fd', borderColor: balance >= 0 ? '#bae6fd' : '#fecdd3' }}>
               <p>Saldo Líquido Geral</p>
-              <h3 style={{ color: balance >= 0 ? '#0369a1' : '#9f1239' }}>R$ {balance.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</h3>
+              <h3 style={{ color: balance >= 0 ? '#0369a1' : '#9f1239' }}>R$ {formatCurrency(balance)}</h3>
             </div>
           )}
         </section>
@@ -162,7 +164,7 @@ const PrintLayout = ({ reportData, companyInfo, logoUrl, dateRange }: { reportDa
                   color: t.type === TransactionType.INFLOW ? '#15803d' : 
                          t.type === TransactionType.OUTFLOW ? '#be123c' : '#4f46e5' 
                 }}>
-                  {t.type === TransactionType.OUTFLOW ? '-' : ''}{Math.abs(t.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                  {t.type === TransactionType.OUTFLOW ? '-' : ''}{formatCurrency(Math.abs(t.amount))}
                 </td>
                 <td style={{ fontSize: '7pt', color: '#64748b' }}>{t.notes}</td>
               </tr>
@@ -185,7 +187,7 @@ const PrintLayout = ({ reportData, companyInfo, logoUrl, dateRange }: { reportDa
                   <div style={{ borderBottom: '1px dashed #cbd5e1', paddingBottom: '10px', marginBottom: '10px' }}>
                     <p style={{ fontSize: '7pt', color: '#64748b', fontWeight: 800, margin: '0 0 2px 0', textTransform: 'uppercase' }}>Saldo Líquido no Período</p>
                     <p style={{ fontSize: '13pt', fontWeight: 900, margin: 0, color: group.total >= 0 ? '#15803d' : '#be123c' }}>
-                      R$ {group.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                      R$ {formatCurrency(group.total)}
                     </p>
                   </div>
                   <div>
@@ -195,7 +197,7 @@ const PrintLayout = ({ reportData, companyInfo, logoUrl, dateRange }: { reportDa
                         <div key={bank} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '8.5pt', padding: '2px 0' }}>
                           <span style={{ color: '#475569', fontWeight: 600 }}>{bank}</span>
                           <span style={{ fontWeight: 800, color: bal >= 0 ? '#166534' : '#9f1239' }}>
-                            R$ {bal.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                            R$ {formatCurrency(bal)}
                           </span>
                         </div>
                       ))}
@@ -345,18 +347,22 @@ const App: React.FC = () => {
   };
 
   const normalizedTransactions = useMemo(() => {
-    const cnpjToNameMap = new Map<string, string>();
-    const nameToCnpjMap = new Map<string, string>();
+    const cnpjToCompanyMap = new Map<string, CompanyInfo>();
+    const nameToCompanyMap = new Map<string, CompanyInfo>();
 
     registeredCompanies.forEach(c => {
       const cleanCnpj = c.cnpj ? c.cnpj.replace(/\D/g, '') : '';
       if (cleanCnpj) {
-        cnpjToNameMap.set(cleanCnpj, c.name);
-        nameToCnpjMap.set(c.name.toLowerCase().trim(), cleanCnpj);
-        c.alternativeNames?.forEach(alt => {
-          nameToCnpjMap.set(alt.toLowerCase().trim(), cleanCnpj);
-        });
+        cnpjToCompanyMap.set(cleanCnpj, c);
       }
+      
+      // Mapeia o nome principal
+      nameToCompanyMap.set(c.name.toLowerCase().trim(), c);
+      
+      // Mapeia cada nome alternativo para a mesma empresa principal
+      c.alternativeNames?.forEach(alt => {
+        nameToCompanyMap.set(alt.toLowerCase().trim(), c);
+      });
     });
 
     const normalizeBank = (bank: string) => {
@@ -369,27 +375,20 @@ const App: React.FC = () => {
     };
 
     return transactions.map(t => {
-      let cleanCnpj = t.ownerCnpj ? t.ownerCnpj.replace(/\D/g, '') : '';
-      let ownerName = t.ownerName;
+      const cleanTValCnpj = t.ownerCnpj ? t.ownerCnpj.replace(/\D/g, '') : '';
+      const lowerTValName = t.ownerName ? t.ownerName.toLowerCase().trim() : '';
 
-      // Primeiro tenta identificar pelo CNPJ se ele existir
-      if (cleanCnpj && cnpjToNameMap.has(cleanCnpj)) {
-        ownerName = cnpjToNameMap.get(cleanCnpj)!;
-      } 
-      // Se não houver CNPJ ou não bater, tenta identificar apenas pelo NOME (resolvendo a duplicidade solicitada)
-      else if (ownerName) {
-        const nameLower = ownerName.toLowerCase().trim();
-        if (nameToCnpjMap.has(nameLower)) {
-          const matchedCnpj = nameToCnpjMap.get(nameLower)!;
-          cleanCnpj = matchedCnpj;
-          ownerName = cnpjToNameMap.get(matchedCnpj)!;
-        }
-      }
+      // Tenta identificar a empresa pelo CNPJ ou pelo Nome (Principal ou Alternativo)
+      const matchedCompany = cnpjToCompanyMap.get(cleanTValCnpj) || nameToCompanyMap.get(lowerTValName);
+      
+      // Se encontrar uma empresa correspondente, força o Nome Principal e o CNPJ cadastrado
+      const finalName = matchedCompany ? matchedCompany.name : t.ownerName;
+      const finalCnpj = matchedCompany ? (matchedCompany.cnpj || t.ownerCnpj) : t.ownerCnpj;
       
       return { 
         ...t, 
-        ownerName,
-        ownerCnpj: cleanCnpj, // Mantém o CNPJ vinculado para filtros consistentes
+        ownerName: finalName,
+        ownerCnpj: finalCnpj,
         ownerBank: normalizeBank(t.ownerBank),
         payingBank: normalizeBank(t.payingBank)
       };
@@ -399,6 +398,7 @@ const App: React.FC = () => {
   const filteredTransactions = useMemo(() => {
     let result = [...normalizedTransactions];
 
+    // O filtro global selectedCnpj e o filtro da coluna Empresa agora estão sincronizados pela mesma lógica de CNPJ
     if (selectedCnpj) {
       const targetCnpj = selectedCnpj.replace(/\D/g, '');
       result = result.filter(t => (t.ownerCnpj || '').replace(/\D/g, '') === targetCnpj);
@@ -422,11 +422,13 @@ const App: React.FC = () => {
         result = result.filter(t => {
           if (key === 'amount') {
             const absVal = Math.abs(t.amount || 0);
-            const formatted = absVal.toLocaleString('pt-BR', { minimumFractionDigits: 2 });
+            const formatted = new Intl.NumberFormat('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(absVal);
             const displayVal = (t.type === TransactionType.OUTFLOW ? '-' : '') + formatted;
             return displayVal.includes(filterValue);
           }
           if (key === 'date') return t.date ? t.date.split('T')[0].includes(value) : false;
+          // ownerName já é tratado via selectedCnpj
+          if (key === 'ownerName') return true; 
           const tValue = String(t[key as keyof Transaction] || '').toLowerCase();
           return tValue.includes(value);
         });
@@ -470,7 +472,7 @@ const App: React.FC = () => {
         
         const result = await processStatement(base64, file.type);
         
-        // Lógica de Identificação: Tenta casar o nome extraído do PDF com empresas cadastradas
+        // Lógica de Identificação em Tempo Real no processamento
         const identifiedTransactions = result.transactions.map((t: any) => {
           const partyNameLower = (t.ownerName || '').toLowerCase().trim();
           const matchedCompany = registeredCompanies.find(c => 
@@ -481,8 +483,8 @@ const App: React.FC = () => {
           if (matchedCompany) {
             return {
               ...t,
-              ownerName: matchedCompany.name,
-              ownerCnpj: matchedCompany.cnpj || t.ownerCnpj // Sobrescreve com o CNPJ da base se cadastrado
+              ownerName: matchedCompany.name, // Garante que salva com o nome principal
+              ownerCnpj: matchedCompany.cnpj || t.ownerCnpj
             };
           }
           return t;
@@ -722,6 +724,15 @@ const App: React.FC = () => {
     return { name: first?.ownerName || 'Empresa', cnpj: first?.ownerCnpj || '' };
   }, [filteredTransactions, selectedCnpj]);
 
+  // Sincroniza o filtro da coluna Empresa com o seletor global selectedCnpj
+  const handleColumnFilterChange = useCallback((field: keyof ColumnFilters, value: string) => {
+    if (field === 'ownerName') {
+      // Se mudar o filtro da coluna Empresa, atualiza o global selectedCnpj
+      setSelectedCnpj(value || null);
+    }
+    setColumnFilters(prev => ({ ...prev, [field]: value }));
+  }, []);
+
   if (!isAuthenticated) {
     return <Login onLoginSuccess={handleLoginSuccess} />;
   }
@@ -808,7 +819,11 @@ const App: React.FC = () => {
                             <span className="text-[10px] text-slate-400 font-black uppercase tracking-tighter">até</span>
                             <input type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} className="text-[10px] font-black bg-indigo-50 text-indigo-700 rounded-lg px-2 py-1.5 outline-none border border-indigo-100" />
                           </div>
-                          <select className="bg-white p-2.5 rounded-2xl text-[10px] font-black border border-slate-100 shadow-sm outline-none focus:border-indigo-300" value={selectedCnpj || ""} onChange={(e) => setSelectedCnpj(e.target.value || null)}>
+                          <select className="bg-white p-2.5 rounded-2xl text-[10px] font-black border border-slate-100 shadow-sm outline-none focus:border-indigo-300" value={selectedCnpj || ""} onChange={(e) => {
+                            const val = e.target.value || null;
+                            setSelectedCnpj(val);
+                            handleColumnFilterChange('ownerName', val || '');
+                          }}>
                             <option value="">Grupo Capital Dois</option>
                             {uniqueCompanies.map(c => <option key={c.cnpj || c.id} value={c.cnpj}>{c.name}</option>)}
                           </select>
@@ -848,7 +863,15 @@ const App: React.FC = () => {
                               <h3 className="text-[11px] font-black text-slate-400 uppercase tracking-[0.2em] px-4">Sessão: Histórico Detalhado</h3>
                               <div className="h-px flex-1 bg-slate-100"></div>
                             </div>
-                            <TransactionTable transactions={filteredTransactions} allTransactions={normalizedTransactions} onUpdateTransaction={handleUpdateTransaction} selectedCnpj={selectedCnpj} columnFilters={columnFilters} onColumnFilterChange={(f, v) => setColumnFilters(p => ({ ...p, [f]: v }))} />
+                            <TransactionTable 
+                              transactions={filteredTransactions} 
+                              allTransactions={normalizedTransactions} 
+                              onUpdateTransaction={handleUpdateTransaction} 
+                              selectedCnpj={selectedCnpj} 
+                              columnFilters={columnFilters} 
+                              onColumnFilterChange={handleColumnFilterChange}
+                              registeredCompanies={uniqueCompanies}
+                            />
                           </section>
                         )}
                       </div>
@@ -1209,7 +1232,7 @@ const App: React.FC = () => {
                           <div className="relative">
                             <input required type={showPassword ? "text" : "password"} placeholder="Senha" value={newUserPassword} onChange={e => setNewUserPassword(e.target.value)} className="w-full p-4 bg-slate-50 border rounded-xl font-bold text-sm pr-12" />
                             <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute inset-y-0 right-0 flex items-center px-4 text-slate-400 hover:text-slate-600">
-                              {showPassword ? ( <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l18 18" /></svg> ) : ( <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268-2.943-9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg> )}
+                              {showPassword ? ( <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97(0 0 1 1.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l18 18" /></svg> ) : ( <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268-2.943-9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg> )}
                             </button>
                           </div>
                           <select value={newUserRole} onChange={e => setNewUserRole(e.target.value as 'admin' | 'comum')} className="w-full p-4 bg-slate-50 border rounded-xl font-bold text-sm appearance-none">
@@ -1299,7 +1322,7 @@ const App: React.FC = () => {
 
         {isPdfModalOpen && (
           <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-[100]">
-            <div className="bg-white p-10 rounded-[2.5rem] w-full max-sm shadow-2xl text-center">
+            <div className="bg-white p-10 rounded-[2.5rem] w-full max-w-sm shadow-2xl text-center">
               <h3 className="text-xl font-black mb-2">Gerar Relatório PDF</h3>
               <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-8">Selecione o tipo de relatório</p>
               <div className="space-y-4">
