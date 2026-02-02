@@ -63,7 +63,20 @@ const PrintLayout = ({ reportData, companyInfo, logoUrl, dateRange, registeredCo
 
   // Helper local para resolver o nome canônico/principal da empresa para agrupamento no PDF
   const getCanonicalName = (name: string, cnpj: string) => {
-    const normalize = (s: string) => s.toLowerCase().trim().replace(/\./g, '');
+    // Normalização agressiva para garantir que variações como "C2r Gestao..." e "C2R GEST..." batam sempre
+    const normalize = (s: string) => {
+      if (!s) return "";
+      return s.toLowerCase()
+        .trim()
+        .replace(/\./g, '')
+        .replace(/\s+/g, ' ')
+        .replace(/ ltda$/i, '')
+        .replace(/ s\/a$/i, '')
+        .replace(/ sa$/i, '')
+        .replace(/ me$/i, '')
+        .replace(/ eireli$/i, '');
+    };
+
     const normName = normalize(name);
     const cleanCnpj = (cnpj || '').replace(/\D/g, '');
     
@@ -99,7 +112,10 @@ const PrintLayout = ({ reportData, companyInfo, logoUrl, dateRange, registeredCo
       // Usa o nome canônico para garantir que variações de nomes alternativos agrupem no mesmo card
       const targetName = getCanonicalName(t.ownerName, t.ownerCnpj);
       const compKey = targetName.trim().toUpperCase();
-      const bank = t.type === TransactionType.INFLOW ? t.payingBank : t.ownerBank;
+      
+      // FIX: Para o resumo da empresa no PDF, usamos sempre o ownerBank (o seu banco).
+      // Antes, se fosse Entrada, ele usava payingBank (quem pagou), o que espalhava o saldo por bancos aleatórios.
+      const bank = t.ownerBank;
       
       if (!groups[compKey]) {
         groups[compKey] = { name: targetName, total: 0, banks: {} };
@@ -119,7 +135,6 @@ const PrintLayout = ({ reportData, companyInfo, logoUrl, dateRange, registeredCo
   }, [reportData.data, registeredCompanies]);
 
   // Saldo Líquido Geral: Saldo Manual + Entradas - Saídas
-  // Fix: Ensure the calculated balance is explicitly typed as number to resolve TS comparison and formatting errors.
   const balance: number = (summary.totalManual as number) + (summary.totalInflow as number) - (summary.totalOutflow as number);
 
   return (
@@ -220,8 +235,9 @@ const PrintLayout = ({ reportData, companyInfo, logoUrl, dateRange, registeredCo
                       {Object.entries(group.banks).map(([bank, bal]) => (
                         <div key={bank} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '8.5pt', padding: '2px 0' }}>
                           <span style={{ color: '#475569', fontWeight: 600 }}>{bank}</span>
-                          <span style={{ fontWeight: 800, color: bal >= 0 ? '#166534' : '#9f1239' }}>
-                            R$ {formatCurrency(bal)}
+                          {/* FIX: Explicitly cast 'bal' to number to resolve 'unknown' type errors during build on lines 238 and 239. */}
+                          <span style={{ fontWeight: 800, color: (bal as number) >= 0 ? '#166534' : '#9f1239' }}>
+                            R$ {formatCurrency(bal as number)}
                           </span>
                         </div>
                       ))}
@@ -798,7 +814,7 @@ const App: React.FC = () => {
                       className="bg-rose-50 hover:bg-rose-100 text-rose-600 px-5 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-colors border border-rose-100"
                     >
                       <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
                       </svg>
                       Limpar Tudo
                     </button>
@@ -1005,7 +1021,7 @@ const App: React.FC = () => {
                       <label className="cursor-pointer block">
                         <div className="w-20 h-20 bg-indigo-50 rounded-full flex items-center justify-center mx-auto mb-6">
                           <svg xmlns="http://www.w3.org/2000/svg" className="h-10 w-10 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                           </svg>
                         </div>
                         <span className="bg-slate-900 text-white font-black px-10 py-4 rounded-2xl text-sm uppercase tracking-widest hover:bg-black transition-all inline-block shadow-lg">
@@ -1101,82 +1117,12 @@ const App: React.FC = () => {
                   </div>
                   {isAddingCompany && (
                     <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-[100]">
-                      <div className="bg-white p-10 rounded-[2.5rem] w-full max-w-md shadow-2xl">
-                        <div className="flex justify-between items-center mb-6">
-                            <h3 className="text-2xl font-black">Nova Empresa</h3>
-                            <div className="h-10 w-10 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-600">
-                                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
-                                </svg>
-                            </div>
-                        </div>
+                      <div className="bg-white p-10 rounded-[2.5rem] w-full max-md shadow-2xl">
+                        <h3 className="text-2xl font-black mb-6">Nova Empresa</h3>
                         <form onSubmit={handleAddCompany} className="space-y-4">
-                          <div className="space-y-1">
-                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">Razão / Nome Principal</label>
-                            <input required placeholder="Ex: Capital Dois Gestão Ltda" value={newCompanyName} onChange={e => setNewCompanyName(e.target.value)} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm focus:ring-2 focus:ring-indigo-400 outline-none transition-all" />
-                          </div>
-                          <div className="space-y-1">
-                            <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest px-2">CNPJ</label>
-                            <input placeholder="00.000.000/0000-00" value={newCompanyCnpj} onChange={e => setNewCompanyCnpj(e.target.value)} className="w-full p-4 bg-slate-50 border border-slate-200 rounded-xl font-bold text-sm focus:ring-2 focus:ring-indigo-400 outline-none transition-all" />
-                          </div>
-                          
-                          <div className="pt-2">
-                            <div className="flex justify-between items-center mb-2 px-2">
-                                <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Nomes Alternativos</label>
-                                <button 
-                                    type="button" 
-                                    onClick={() => setNewCompanyAltNames([...newCompanyAltNames, ''])}
-                                    className="w-6 h-6 rounded-full bg-indigo-600 text-white flex items-center justify-center hover:bg-indigo-700 transition-colors shadow-sm"
-                                    title="Incluir outro nome"
-                                >
-                                    <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
-                                        <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6m0 0v6m0-6h6m-6 0H6" />
-                                    </svg>
-                                </button>
-                            </div>
-                            <div className="space-y-2 max-h-40 overflow-y-auto custom-scrollbar p-1">
-                                {newCompanyAltNames.map((name, idx) => (
-                                    <div key={idx} className="flex gap-2 animate-in slide-in-from-top-1 duration-200">
-                                        <input 
-                                            className="flex-1 bg-white border border-slate-200 rounded-xl p-3 font-bold text-xs outline-none focus:border-indigo-300" 
-                                            value={name} 
-                                            onChange={e => {
-                                                const newList = [...newCompanyAltNames];
-                                                newList[idx] = e.target.value;
-                                                setNewCompanyAltNames(newList);
-                                            }} 
-                                            placeholder="Outra forma que aparece no extrato" 
-                                        />
-                                        <button 
-                                            type="button" 
-                                            onClick={() => setNewCompanyAltNames(newCompanyAltNames.filter((_, i) => i !== idx))}
-                                            className="text-rose-400 hover:text-rose-600 p-2"
-                                        >
-                                            <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                                                <path strokeLinecap="round" strokeLinejoin="round" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                                            </svg>
-                                        </button>
-                                    </div>
-                                ))}
-                                {newCompanyAltNames.length === 0 && (
-                                    <div className="bg-slate-50 border border-dashed border-slate-200 rounded-xl p-4 text-center">
-                                        <p className="text-[10px] font-bold text-slate-400 uppercase">Esse CNPJ possui outros nomes?</p>
-                                        <button 
-                                            type="button" 
-                                            onClick={() => setNewCompanyAltNames([''])}
-                                            className="text-xs font-black text-indigo-600 mt-1 hover:underline"
-                                        >
-                                            + Clique aqui para incluir
-                                        </button>
-                                    </div>
-                                )}
-                            </div>
-                          </div>
-
-                          <div className="flex gap-3 pt-6">
-                            <button type="submit" className="flex-1 bg-indigo-600 text-white py-4 rounded-xl font-black uppercase text-xs hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100">Salvar Empresa</button>
-                            <button type="button" onClick={() => { setIsAddingCompany(false); setNewCompanyAltNames([]); }} className="flex-1 bg-slate-100 py-4 rounded-xl font-black uppercase text-xs hover:bg-slate-200 transition-all">Cancelar</button>
-                          </div>
+                          <input required placeholder="Razão Social / Nome Principal" value={newCompanyName} onChange={e => setNewCompanyName(e.target.value)} className="w-full p-4 bg-slate-50 border rounded-xl font-bold text-sm" />
+                          <input placeholder="CNPJ (opcional)" value={newCompanyCnpj} onChange={e => setNewCompanyCnpj(e.target.value)} className="w-full p-4 bg-slate-50 border rounded-xl font-bold text-sm" />
+                          <div className="flex gap-3 pt-6"><button type="submit" className="flex-1 bg-indigo-600 text-white py-4 rounded-xl font-black uppercase text-xs">Salvar</button><button type="button" onClick={() => { setIsAddingCompany(false); setNewCompanyAltNames([]); }} className="flex-1 bg-slate-100 py-4 rounded-xl font-black uppercase text-xs">Cancelar</button></div>
                         </form>
                       </div>
                     </div>
