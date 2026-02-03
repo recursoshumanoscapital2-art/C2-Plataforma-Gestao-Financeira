@@ -6,6 +6,7 @@ interface TransactionTableProps {
   transactions: Transaction[];
   allTransactions: Transaction[];
   onUpdateTransaction: (id: string, updates: Partial<Transaction>) => void;
+  onDeleteTransaction: (id: string) => void;
   selectedCnpj: string | null;
   columnFilters: ColumnFilters;
   onColumnFilterChange: (field: keyof ColumnFilters, value: string) => void;
@@ -16,6 +17,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
   transactions, 
   allTransactions,
   onUpdateTransaction, 
+  onDeleteTransaction,
   selectedCnpj,
   columnFilters,
   onColumnFilterChange,
@@ -74,6 +76,16 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
       counterparties: Array.from(new Set(allTransactions.filter(t => t.type === TransactionType.OUTFLOW).map(t => t.counterpartyName))).sort(),
     };
   }, [allTransactions]);
+
+  // Mapa de duplicidades baseado em Valor, Banco (ownerBank), Tipo e Favorecido
+  const duplicatesMap = useMemo(() => {
+    const map = new Map<string, number>();
+    transactions.forEach(t => {
+      const key = `${t.amount.toFixed(2)}|${t.ownerBank}|${t.type}|${t.counterpartyName}`;
+      map.set(key, (map.get(key) || 0) + 1);
+    });
+    return map;
+  }, [transactions]);
 
   const toggleFilter = (column: string) => {
     setActiveFilter(activeFilter === column ? null : column);
@@ -227,7 +239,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
         </div>
       ) : (
         <div className="overflow-x-auto custom-scrollbar">
-          <table className="w-full text-left border-collapse table-fixed min-w-[1200px]">
+          <table className="w-full text-left border-collapse table-fixed min-w-[1300px]">
             <thead>
               <tr className="bg-slate-50/80 border-b border-slate-100">
                 <HeaderCell label="Data" field="date" type="date" />
@@ -241,166 +253,186 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                 <HeaderCell label="Origem" field="origin" options={uniqueData.origins.map(o => ({ label: o, value: o }))} />
                 <HeaderCell label="Favorecido" field="counterpartyName" options={uniqueData.counterparties.map(c => ({ label: c, value: c }))} />
                 <HeaderCell label="Valor" field="amount" type="text" align="right" />
-                <th className="px-6 py-5 w-52 text-[10px] font-black uppercase tracking-widest text-slate-400">Observações</th>
+                <th className="px-6 py-5 w-44 text-[10px] font-black uppercase tracking-widest text-slate-400">Observações</th>
+                <th className="px-4 py-5 w-20 text-[10px] font-black uppercase tracking-widest text-slate-400 text-center">Ações</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
-              {transactions.map((t) => (
-                <tr key={t.id} className="hover:bg-indigo-50/20 transition-colors group">
-                  <td className="px-6 py-4 text-[11px] font-bold text-slate-500 whitespace-nowrap">
-                    {t.date.split('T')[0].split('-').reverse().join('/')}
-                  </td>
+              {transactions.map((t) => {
+                const rowKey = `${t.amount.toFixed(2)}|${t.ownerBank}|${t.type}|${t.counterpartyName}`;
+                const isDuplicate = (duplicatesMap.get(rowKey) || 0) > 1;
 
-                  <td className="px-6 py-4">
-                    <div className="text-[11px] font-black text-slate-800 truncate" title={t.ownerName}>
-                      {t.ownerName}
-                    </div>
-                    <div className="text-[9px] text-slate-400 font-mono tracking-tight mt-0.5">{t.ownerCnpj}</div>
-                  </td>
+                return (
+                  <tr key={t.id} className="hover:bg-indigo-50/20 transition-colors group">
+                    <td className="px-6 py-4 text-[11px] font-bold text-slate-500 whitespace-nowrap">
+                      {t.date.split('T')[0].split('-').reverse().join('/')}
+                    </td>
 
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-600 truncate" title={t.ownerBank}>
-                      <div className="w-1.5 h-1.5 rounded-full bg-slate-300"></div>
-                      <span className="truncate">{t.ownerBank}</span>
-                    </div>
-                  </td>
-
-                  <td className="px-6 py-4 text-center relative">
-                    {editingCell?.id === t.id && editingCell.field === 'type' ? (
-                      <select
-                        autoFocus
-                        className="w-full border-2 border-indigo-400 rounded-lg px-2 py-1 text-[11px] outline-none shadow-sm appearance-none bg-white"
-                        value={tempValue}
-                        onChange={(e) => {
-                          onUpdateTransaction(t.id, { type: e.target.value as TransactionType });
-                          setEditingCell(null);
-                        }}
-                        onBlur={() => setEditingCell(null)}
-                      >
-                        <option value={TransactionType.INFLOW}>entrada</option>
-                        <option value={TransactionType.OUTFLOW}>saída</option>
-                        <option value={TransactionType.MANUAL}>saldo manual</option>
-                      </select>
-                    ) : (
-                      <span 
-                        onClick={() => startEditing(t.id, 'type', t.type)}
-                        className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase inline-block border cursor-pointer transition-all hover:scale-105 ${
-                        t.type === TransactionType.INFLOW 
-                        ? 'bg-emerald-50 text-emerald-700 border-emerald-100' 
-                        : t.type === TransactionType.OUTFLOW 
-                        ? 'bg-rose-50 text-rose-700 border-rose-100'
-                        : 'bg-slate-50 text-slate-700 border-slate-200'
-                      }`}>
-                        {t.type}
-                      </span>
-                    )}
-                  </td>
-
-                  <td className="px-6 py-4">
-                    {editingCell?.id === t.id && editingCell.field === 'origin' ? (
-                      <input
-                        autoFocus
-                        className="w-full border-2 border-indigo-400 rounded-lg px-2 py-1.5 text-[11px] outline-none shadow-sm"
-                        value={tempValue}
-                        onChange={(e) => setTempValue(e.target.value)}
-                        onBlur={saveEdit}
-                        onKeyDown={handleKeyDown}
-                      />
-                    ) : (
-                      <div 
-                        onClick={() => startEditing(t.id, 'origin', t.origin)}
-                        className={`text-[11px] font-bold cursor-pointer border-b border-transparent hover:border-indigo-200 truncate flex items-center gap-1.5 min-h-[1.2rem] ${!t.origin ? 'text-slate-300' : 'text-slate-600'}`}
-                      >
-                        {t.origin || <span className="italic font-medium">Adicionar origem...</span>}
-                        {!t.origin && (
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                          </svg>
-                        )}
+                    <td className="px-6 py-4">
+                      <div className="text-[11px] font-black text-slate-800 truncate" title={t.ownerName}>
+                        {t.ownerName}
                       </div>
-                    )}
-                  </td>
+                      <div className="text-[9px] text-slate-400 font-mono tracking-tight mt-0.5">{t.ownerCnpj}</div>
+                    </td>
 
-                  <td className="px-6 py-4">
-                    {editingCell?.id === t.id && editingCell.field === 'counterpartyName' ? (
-                      <input
-                        autoFocus
-                        className="w-full border-2 border-indigo-400 rounded-lg px-2 py-1.5 text-[11px] outline-none shadow-sm"
-                        value={tempValue}
-                        onChange={(e) => setTempValue(e.target.value)}
-                        onBlur={saveEdit}
-                        onKeyDown={handleKeyDown}
-                      />
-                    ) : (
-                      <div 
-                        onClick={() => startEditing(t.id, 'counterpartyName', t.counterpartyName)}
-                        className="cursor-pointer group/item flex items-center gap-2 overflow-hidden"
-                      >
-                        <div className="flex-1 min-w-0 flex items-center overflow-hidden">
-                          <div className="text-[12px] font-black text-slate-900 truncate border-b border-transparent group-hover/item:border-indigo-200 leading-tight mr-1" title={t.counterpartyName || '-'}>
-                            {t.counterpartyName || '-'}
-                          </div>
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 text-slate-300 group-hover/item:text-indigo-400 inline shrink-0 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                          </svg>
+                    <td className="px-6 py-4">
+                      <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-600 truncate" title={t.ownerBank}>
+                        <div className="w-1.5 h-1.5 rounded-full bg-slate-300"></div>
+                        <span className="truncate">{t.ownerBank}</span>
+                      </div>
+                    </td>
+
+                    <td className="px-6 py-4 text-center relative">
+                      {editingCell?.id === t.id && editingCell.field === 'type' ? (
+                        <select
+                          autoFocus
+                          className="w-full border-2 border-indigo-400 rounded-lg px-2 py-1 text-[11px] outline-none shadow-sm appearance-none bg-white"
+                          value={tempValue}
+                          onChange={(e) => {
+                            onUpdateTransaction(t.id, { type: e.target.value as TransactionType });
+                            setEditingCell(null);
+                          }}
+                          onBlur={() => setEditingCell(null)}
+                        >
+                          <option value={TransactionType.INFLOW}>entrada</option>
+                          <option value={TransactionType.OUTFLOW}>saída</option>
+                          <option value={TransactionType.MANUAL}>saldo manual</option>
+                        </select>
+                      ) : (
+                        <span 
+                          onClick={() => startEditing(t.id, 'type', t.type)}
+                          className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase inline-block border cursor-pointer transition-all hover:scale-105 ${
+                          t.type === TransactionType.INFLOW 
+                          ? 'bg-emerald-50 text-emerald-700 border-emerald-100' 
+                          : t.type === TransactionType.OUTFLOW 
+                          ? 'bg-rose-50 text-rose-700 border-rose-100'
+                          : 'bg-slate-50 text-slate-700 border-slate-200'
+                        }`}>
+                          {t.type}
+                        </span>
+                      )}
+                    </td>
+
+                    <td className="px-6 py-4">
+                      {editingCell?.id === t.id && editingCell.field === 'origin' ? (
+                        <input
+                          autoFocus
+                          className="w-full border-2 border-indigo-400 rounded-lg px-2 py-1.5 text-[11px] outline-none shadow-sm"
+                          value={tempValue}
+                          onChange={(e) => setTempValue(e.target.value)}
+                          onBlur={saveEdit}
+                          onKeyDown={handleKeyDown}
+                        />
+                      ) : (
+                        <div 
+                          onClick={() => startEditing(t.id, 'origin', t.origin)}
+                          className={`text-[11px] font-bold cursor-pointer border-b border-transparent hover:border-indigo-200 truncate flex items-center gap-1.5 min-h-[1.2rem] ${!t.origin ? 'text-slate-300' : 'text-slate-600'}`}
+                        >
+                          {t.origin || <span className="italic font-medium">Adicionar origem...</span>}
+                          {!t.origin && (
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                              <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                            </svg>
+                          )}
                         </div>
-                      </div>
-                    )}
-                    {editingCell?.id !== t.id && t.type !== TransactionType.INFLOW && (
-                      <div className="text-[9px] text-slate-400 truncate mt-0.5 opacity-80" title={t.description}>
-                        {t.description}
-                      </div>
-                    )}
-                  </td>
+                      )}
+                    </td>
 
-                  <td className={`px-6 py-4 text-sm font-black text-right whitespace-nowrap ${
-                    t.type === TransactionType.INFLOW ? 'text-emerald-600' : 
-                    t.type === TransactionType.OUTFLOW ? 'text-rose-600' : 'text-indigo-600'
-                  }`}>
-                    {editingCell?.id === t.id && editingCell.field === 'amount' ? (
-                      <input
-                        autoFocus
-                        className="w-full border-2 border-indigo-400 rounded-lg px-2 py-1.5 text-[11px] outline-none shadow-sm text-right font-black"
-                        value={tempValue}
-                        onChange={(e) => setTempValue(e.target.value)}
-                        onBlur={saveEdit}
-                        onKeyDown={handleKeyDown}
-                      />
-                    ) : (
-                      <div 
-                        onClick={() => startEditing(t.id, 'amount', t.amount.toString())}
-                        className="cursor-pointer border-b border-transparent hover:border-indigo-200"
-                      >
-                        <span className="text-[10px] text-slate-400 mr-1 font-bold">R$</span>
-                        {t.type === TransactionType.OUTFLOW ? '-' : ''} 
-                        {Math.abs(t.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
-                      </div>
-                    )}
-                  </td>
+                    <td className="px-6 py-4">
+                      {editingCell?.id === t.id && editingCell.field === 'counterpartyName' ? (
+                        <input
+                          autoFocus
+                          className="w-full border-2 border-indigo-400 rounded-lg px-2 py-1.5 text-[11px] outline-none shadow-sm"
+                          value={tempValue}
+                          onChange={(e) => setTempValue(e.target.value)}
+                          onBlur={saveEdit}
+                          onKeyDown={handleKeyDown}
+                        />
+                      ) : (
+                        <div 
+                          onClick={() => startEditing(t.id, 'counterpartyName', t.counterpartyName)}
+                          className="cursor-pointer group/item flex items-center gap-2 overflow-hidden"
+                        >
+                          <div className="flex-1 min-w-0 flex items-center overflow-hidden">
+                            <div className="text-[12px] font-black text-slate-900 truncate border-b border-transparent group-hover/item:border-indigo-200 leading-tight mr-1" title={t.counterpartyName || '-'}>
+                              {t.counterpartyName || '-'}
+                            </div>
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 text-slate-300 group-hover/item:text-indigo-400 inline shrink-0 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
+                            </svg>
+                          </div>
+                        </div>
+                      )}
+                      {editingCell?.id !== t.id && t.type !== TransactionType.INFLOW && (
+                        <div className="text-[9px] text-slate-400 truncate mt-0.5 opacity-80" title={t.description}>
+                          {t.description}
+                        </div>
+                      )}
+                    </td>
 
-                  <td className="px-6 py-4">
-                    {editingCell?.id === t.id && editingCell.field === 'notes' ? (
-                      <input
-                        autoFocus
-                        className="w-full border-2 border-indigo-400 rounded-lg px-2 py-1.5 text-[11px] outline-none shadow-sm"
-                        placeholder="Nota..."
-                        value={tempValue}
-                        onChange={(e) => setTempValue(e.target.value)}
-                        onBlur={saveEdit}
-                        onKeyDown={handleKeyDown}
-                      />
-                    ) : (
-                      <div 
-                        onClick={() => startEditing(t.id, 'notes', t.notes)}
-                        className={`text-[10px] cursor-pointer border-b border-transparent hover:border-indigo-200 min-h-[1.2rem] italic leading-tight truncate ${t.notes ? 'text-indigo-600 font-bold' : 'text-slate-300 font-medium'}`}
-                        title={t.notes}
-                      >
-                        {t.notes || 'Adicionar obs...'}
-                      </div>
-                    )}
-                  </td>
-                </tr>
-              ))}
+                    <td className={`px-6 py-4 text-sm font-black text-right whitespace-nowrap ${
+                      t.type === TransactionType.INFLOW ? 'text-emerald-600' : 
+                      t.type === TransactionType.OUTFLOW ? 'text-rose-600' : 'text-indigo-600'
+                    }`}>
+                      {editingCell?.id === t.id && editingCell.field === 'amount' ? (
+                        <input
+                          autoFocus
+                          className="w-full border-2 border-indigo-400 rounded-lg px-2 py-1.5 text-[11px] outline-none shadow-sm text-right font-black"
+                          value={tempValue}
+                          onChange={(e) => setTempValue(e.target.value)}
+                          onBlur={saveEdit}
+                          onKeyDown={handleKeyDown}
+                        />
+                      ) : (
+                        <div 
+                          onClick={() => startEditing(t.id, 'amount', t.amount.toString())}
+                          className="cursor-pointer border-b border-transparent hover:border-indigo-200"
+                        >
+                          <span className="text-[10px] text-slate-400 mr-1 font-bold">R$</span>
+                          {t.type === TransactionType.OUTFLOW ? '-' : ''} 
+                          {Math.abs(t.amount).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+                        </div>
+                      )}
+                    </td>
+
+                    <td className="px-6 py-4">
+                      {editingCell?.id === t.id && editingCell.field === 'notes' ? (
+                        <input
+                          autoFocus
+                          className="w-full border-2 border-indigo-400 rounded-lg px-2 py-1.5 text-[11px] outline-none shadow-sm"
+                          placeholder="Nota..."
+                          value={tempValue}
+                          onChange={(e) => setTempValue(e.target.value)}
+                          onBlur={saveEdit}
+                          onKeyDown={handleKeyDown}
+                        />
+                      ) : (
+                        <div 
+                          onClick={() => startEditing(t.id, 'notes', t.notes)}
+                          className={`text-[10px] cursor-pointer border-b border-transparent hover:border-indigo-200 min-h-[1.2rem] italic leading-tight truncate ${t.notes ? 'text-indigo-600 font-bold' : 'text-slate-300 font-medium'}`}
+                          title={t.notes}
+                        >
+                          {t.notes || 'Adicionar obs...'}
+                        </div>
+                      )}
+                    </td>
+
+                    <td className="px-4 py-4 text-center">
+                      {isDuplicate && (
+                        <button 
+                          onClick={() => onDeleteTransaction(t.id)}
+                          className="p-2 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all active:scale-90"
+                          title="Excluir duplicidade"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
