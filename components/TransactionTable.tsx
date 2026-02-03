@@ -77,16 +77,6 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
     };
   }, [allTransactions]);
 
-  // Mapa de duplicidades baseado em Valor, Banco (ownerBank), Tipo e Favorecido
-  const duplicatesMap = useMemo(() => {
-    const map = new Map<string, number>();
-    transactions.forEach(t => {
-      const key = `${t.amount.toFixed(2)}|${t.ownerBank}|${t.type}|${t.counterpartyName}`;
-      map.set(key, (map.get(key) || 0) + 1);
-    });
-    return map;
-  }, [transactions]);
-
   const toggleFilter = (column: string) => {
     setActiveFilter(activeFilter === column ? null : column);
   };
@@ -259,9 +249,6 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
             </thead>
             <tbody className="divide-y divide-slate-50">
               {transactions.map((t) => {
-                const rowKey = `${t.amount.toFixed(2)}|${t.ownerBank}|${t.type}|${t.counterpartyName}`;
-                const isDuplicate = (duplicatesMap.get(rowKey) || 0) > 1;
-
                 return (
                   <tr key={t.id} className="hover:bg-indigo-50/20 transition-colors group">
                     <td className="px-6 py-4 text-[11px] font-bold text-slate-500 whitespace-nowrap">
@@ -418,17 +405,15 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                     </td>
 
                     <td className="px-4 py-4 text-center">
-                      {isDuplicate && (
-                        <button 
-                          onClick={() => onDeleteTransaction(t.id)}
-                          className="p-2 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all active:scale-90"
-                          title="Excluir duplicidade"
-                        >
-                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                          </svg>
-                        </button>
-                      )}
+                      <button 
+                        onClick={() => onDeleteTransaction(t.id)}
+                        className="p-2 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all active:scale-90"
+                        title="Excluir transação"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                        </svg>
+                      </button>
                     </td>
                   </tr>
                 );
