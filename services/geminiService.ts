@@ -53,34 +53,31 @@ export async function processStatement(fileBase64: string, mimeType: string): Pr
             }
           },
           {
-            text: "Extraia TODAS as transações deste extrato. Seja exaustivo e não pule nenhuma linha de movimentação financeira."
+            text: "Extraia todas as transações deste extrato. Retorne APENAS o JSON conforme o schema, sem explicações extras. Se houver muitas páginas, certifique-se de listar todas as movimentações de forma ultra-concisa."
           }
         ]
       },
       config: {
         maxOutputTokens: 15000,
+        temperature: 0.1, // Menor temperatura para maior precisão e menor verbosidade
         thinkingConfig: { thinkingBudget: 0 },
-        systemInstruction: `Você é um robô de extração de dados contábeis de alta precisão.
-            Converta extratos bancários para JSON. 
+        systemInstruction: `Você é um extrator de dados contábeis. Sua missão é converter extratos bancários (PDF/Imagem) em JSON puro.
             
-            REGRAS DE ECONOMIA DE TOKENS (CRÍTICO):
-            1. No array 'transactions', NÃO repita informações do dono da conta ou do banco emissor.
-            2. Extraia apenas o essencial de cada linha para manter o JSON conciso.
+            REGRAS CRÍTICAS DE ECONOMIA DE TOKENS:
+            1. NÃO adicione campos que não estão no schema.
+            2. NÃO repita nomes de bancos ou do titular em cada item da lista (use os campos de topo do objeto).
+            3. Seja ultra-objetivo nas descrições ('desc') e nomes de favorecidos ('party').
             
-            ESPECÍFICO PARA BANCO DO BRASIL:
-            - Identifique visualmente que valores na cor VERMELHA são Saídas (type: "saída").
-            - Identifique visualmente que valores na cor AZUL são Entradas (type: "entrada").
-            - A transação com a descrição "INVEST. RESGATE AUTOM." deve ser SEMPRE classificada como "entrada".
+            BANCO DO BRASIL:
+            - Valores em VERMELHO são Saídas (type: "saída").
+            - Valores em AZUL são Entradas (type: "entrada").
+            - Descrição "INVEST. RESGATE AUTOM." é sempre "entrada".
             
-            INSTRUÇÕES DE CAMPOS:
-            - ownerName: Razão Social/Titular da conta.
-            - ownerCnpj: APENAS se escrito 'CNPJ' no texto. Se não, deixe "".
-            - ownerBank: Nome do banco (ex: Itaú, Bradesco, Banco do Brasil).
-            - transactions: Lista de todas as movimentações.
-            - date: ISO 8601 (YYYY-MM-DDTHH:mm:ss).
-            - type: "entrada" (crédito) ou "saída" (débito).
-            - method: Classifique em PIX, TED, BOLETO, CARTÃO ou OUTROS.
-            - category: Breve descrição da origem (Venda, Tarifa, Imposto, etc).`,
+            SCHEMA:
+            - ownerName: Razão Social.
+            - ownerCnpj: CNPJ se houver, ou string vazia.
+            - ownerBank: Nome do Banco.
+            - transactions: Lista de objetos com date (ISO), desc (descrição curta), val (número absoluto), type ("entrada" ou "saída"), party (favorecido), method (PIX, TED, BOLETO, CARTÃO, OUTROS), cat (categoria curta).`,
         responseMimeType: "application/json",
         responseSchema: {
           type: Type.OBJECT,
@@ -97,7 +94,7 @@ export async function processStatement(fileBase64: string, mimeType: string): Pr
                   desc: { type: Type.STRING },
                   val: { type: Type.NUMBER },
                   type: { type: Type.STRING },
-                  party: { type: Type.STRING, description: "Nome da contraparte ou favorecido" },
+                  party: { type: Type.STRING },
                   method: { type: Type.STRING },
                   cat: { type: Type.STRING }
                 },
@@ -110,12 +107,18 @@ export async function processStatement(fileBase64: string, mimeType: string): Pr
       }
     });
 
-    let jsonStr = response.text?.trim() ?? "{}";
+    let jsonStr = response.text?.trim() ?? "";
     
-    if (jsonStr.includes('```json')) {
-      jsonStr = jsonStr.split('```json')[1].split('```')[0].trim();
-    } else if (jsonStr.includes('```')) {
-      jsonStr = jsonStr.split('```')[1].split('```')[0].trim();
+    // Fallback agressivo para limpar markdown se o modelo ignorar o mimeType: application/json
+    if (jsonStr.includes('```')) {
+      const match = jsonStr.match(/```(?:json)?([\s\S]*?)```/);
+      if (match && match[1]) {
+        jsonStr = match[1].trim();
+      }
+    }
+
+    if (!jsonStr) {
+      throw new Error("O modelo retornou uma resposta vazia.");
     }
 
     try {
@@ -148,8 +151,9 @@ export async function processStatement(fileBase64: string, mimeType: string): Pr
         }))
       };
     } catch (parseError) {
-      console.error("Erro ao parsear JSON:", jsonStr);
-      throw new Error("A resposta da IA veio incompleta. O arquivo pode ser muito grande ou complexo.");
+      console.error("JSON inválido recebido:", jsonStr);
+      // Se o erro for de parsing, provavelmente o JSON foi truncado por ser muito longo
+      throw new Error("O extrato é muito longo ou complexo para ser processado em um único lote. Tente importar menos páginas por vez ou divida o arquivo.");
     }
   });
 }
