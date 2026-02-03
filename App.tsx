@@ -1,4 +1,3 @@
-
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import { Transaction, TransactionType, PaymentMethod } from './types';
@@ -381,7 +380,6 @@ const App: React.FC = () => {
         ]);
         const compList = compSnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })) as CompanyInfo[];
         setRegisteredCompanies(compList);
-        // Fix: Corrected name from 'userDataSnapshot' to 'usersListData' and removed redundant code
         const usersListData = usersSnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })) as UserInfo[];
         setUsersList(usersListData);
       } catch (err) {
@@ -440,8 +438,27 @@ const App: React.FC = () => {
       if (!bank) return bank;
       const b = bank.trim();
       const lower = b.toLowerCase();
-      if (lower === 'itau' || lower === 'itaú') return 'Itaú';
-      return b;
+      
+      // Lógica de padronização profissional dos nomes dos bancos
+      if (lower.includes('mercantil')) return 'Banco Mercantil';
+      if (lower.includes('brasil')) return 'Banco do Brasil';
+      if (lower.includes('bradesco')) return 'Bradesco';
+      if (lower.includes('itau') || lower.includes('itaú')) return 'Itaú';
+      if (lower.includes('santander')) return 'Santander';
+      if (lower.includes('caixa')) return 'Caixa Econômica';
+      if (lower.includes('nubank')) return 'Nubank';
+      if (lower.includes('inter')) return 'Banco Inter';
+      if (lower.includes('btg')) return 'BTG Pactual';
+      if (lower.includes('safra')) return 'Banco Safra';
+      if (lower.includes('c6')) return 'C6 Bank';
+      if (lower.includes('cora')) return 'Cora';
+      if (lower.includes('daycoval')) return 'Banco Daycoval';
+      if (lower.includes('bmg')) return 'Banco BMG';
+      
+      // Fallback para nomes desconhecidos (Title Case)
+      return b.split(' ')
+        .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+        .join(' ');
     };
 
     return transactions.map(t => {
