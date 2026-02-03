@@ -1,4 +1,3 @@
-
 import { Transaction, TransactionType, PaymentMethod, StatementResult } from "../types";
 
 declare const pdfjsLib: any;
@@ -20,7 +19,6 @@ export async function parsePDFLocally(file: File): Promise<StatementResult> {
     const textContent = await page.getTextContent();
     
     // Ordenar itens por posição Y (topo para baixo) e depois X (esquerda para direita)
-    // Isso ajuda a manter a ordem de leitura correta em PDFs complexos
     const items = textContent.items.sort((a: any, b: any) => {
       if (Math.abs(a.transform[5] - b.transform[5]) > 5) {
         return b.transform[5] - a.transform[5];
@@ -42,15 +40,11 @@ export async function parsePDFLocally(file: File): Promise<StatementResult> {
     fullText += pageText + "\n";
   }
 
-  console.log("Texto extraído do PDF:", fullText); // Log para debug
-
   // 1. Extrair Dados do Titular (Owner)
-  // Regra: Somente se houver a palavra CNPJ seguida do número
   const cnpjRegex = /CNPJ\s*[:\-\s]*(\d{2}\.?\d{3}\.?\d{3}\/?\d{4}-?\d{2})/i;
   const cnpjMatch = fullText.match(cnpjRegex);
   const ownerCnpj = cnpjMatch ? cnpjMatch[1].replace(/\D/g, '') : '';
 
-  // Heurística para Nome da Empresa (primeiras linhas que não são cabeçalhos genéricos)
   const lines = fullText.split("\n").map(l => l.trim()).filter(l => l.length > 3);
   let ownerName = "Empresa Não Identificada";
   const blackList = ["extrato", "periodo", "página", "saldo", "banco", "emissão", "data", "conta"];
@@ -66,13 +60,10 @@ export async function parsePDFLocally(file: File): Promise<StatementResult> {
     }
   }
 
-  // Identificação do Banco
   const banks = ["Itaú", "Bradesco", "Santander", "Brasil", "Caixa", "Nubank", "Inter", "BTG", "Safra", "C6"];
   const ownerBank = banks.find(b => fullText.toLowerCase().includes(b.toLowerCase())) || "Banco Não Identificado";
 
   // 2. Extrair Transações
-  // Padrão: Data (DD/MM ou DD/MM/AAAA) + Espaço + Descrição + Espaço + Valor (0,00 ou -0,00)
-  // Ajustado para capturar valores com ou sem separador de milhar e sinal de negativo no início ou fim
   const transactionRegex = /(\d{2}\/\d{2}(?:\/\d{4})?)\s+(.*?)\s+(-?\s?[\d\.]+,\d{2}|[\d\.]+,\d{2}\s?-)/g;
   const transactions: Transaction[] = [];
   let match;
@@ -82,19 +73,22 @@ export async function parsePDFLocally(file: File): Promise<StatementResult> {
     const description = match[2].trim();
     let rawValue = match[3].replace(/\s/g, '');
     
-    // Tratar sinal de negativo no final (comum em alguns bancos)
-    const isNegative = rawValue.includes('-') || 
+    // Regra específica para Invest. Resgate Autom. (sempre entrada)
+    const isResgateBB = description.toLowerCase().includes("invest. resgate autom.");
+    
+    const isNegative = !isResgateBB && (
+                      rawValue.includes('-') || 
                       description.toLowerCase().includes("pagamento") || 
                       description.toLowerCase().includes("débito") ||
                       description.toLowerCase().includes("tarifa") ||
                       description.toLowerCase().includes("pix -") ||
-                      description.toLowerCase().includes("transf. enviada");
+                      description.toLowerCase().includes("transf. enviada")
+    );
 
     const amount = Math.abs(parseFloat(rawValue.replace('-', '').replace(/\./g, '').replace(',', '.')));
     
     if (isNaN(amount) || amount === 0) continue;
 
-    // Formatar data para ISO
     let finalDate = "";
     try {
       const parts = dateStr.split('/');
@@ -106,7 +100,6 @@ export async function parsePDFLocally(file: File): Promise<StatementResult> {
       finalDate = new Date().toISOString();
     }
 
-    // Determinar Método de Pagamento
     let paymentMethod = PaymentMethod.OUTROS;
     const descUpper = description.toUpperCase();
     if (descUpper.includes("PIX")) paymentMethod = PaymentMethod.PIX;
@@ -115,7 +108,7 @@ export async function parsePDFLocally(file: File): Promise<StatementResult> {
     else if (descUpper.includes("CARTAO") || descUpper.includes("COMPRA")) paymentMethod = PaymentMethod.CARTAO;
 
     transactions.push({
-      id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      id: `${Date.now()}-${Math.random().toString(36).substring(2, 11)}`,
       date: finalDate,
       description: description,
       amount: amount,
