@@ -67,10 +67,15 @@ export async function processStatement(fileBase64: string, mimeType: string): Pr
             1. No array 'transactions', NÃO repita informações do dono da conta ou do banco emissor.
             2. Extraia apenas o essencial de cada linha para manter o JSON conciso.
             
+            ESPECÍFICO PARA BANCO DO BRASIL:
+            - Identifique visualmente que valores na cor VERMELHA são Saídas (type: "saída").
+            - Identifique visualmente que valores na cor AZUL são Entradas (type: "entrada").
+            - A transação com a descrição "INVEST. RESGATE AUTOM." deve ser SEMPRE classificada como "entrada".
+            
             INSTRUÇÕES DE CAMPOS:
             - ownerName: Razão Social/Titular da conta.
             - ownerCnpj: APENAS se escrito 'CNPJ' no texto. Se não, deixe "".
-            - ownerBank: Nome do banco (ex: Itaú, Bradesco).
+            - ownerBank: Nome do banco (ex: Itaú, Bradesco, Banco do Brasil).
             - transactions: Lista de todas as movimentações.
             - date: ISO 8601 (YYYY-MM-DDTHH:mm:ss).
             - type: "entrada" (crédito) ou "saída" (débito).
