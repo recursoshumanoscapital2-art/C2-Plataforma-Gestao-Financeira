@@ -650,7 +650,8 @@ const App: React.FC = () => {
       }
 
       if (!interruptRef.current) {
-        setTransactions(prev => [...uniqueToSave, ...prev]);
+        // A atualização local de estado foi removida aqui pois o onSnapshot cuidará disso automaticamente,
+        // evitando duplicidades visuais temporárias.
         setPendingFiles([]);
         navigate('/');
         const skipped = allExtractedTransactions.length - uniqueToSave.length;
@@ -756,8 +757,8 @@ const App: React.FC = () => {
         notes: 'Inclusão corretiva de saldo manual'
       };
 
-      const docRef = await addDoc(collection(db, "transactions"), newTransaction);
-      setTransactions(prev => [{ ...newTransaction, id: docRef.id }, ...prev]);
+      // Realiza a inclusão no Firestore. O listener onSnapshot atualizará o estado automaticamente.
+      await addDoc(collection(db, "transactions"), newTransaction);
       
       setIsManualBalanceModalOpen(false);
       setManualBalanceValue('');
