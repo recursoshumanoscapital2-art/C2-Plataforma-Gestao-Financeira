@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { Routes, Route, useNavigate, useLocation } from 'react-router-dom';
 import { Transaction, TransactionType, PaymentMethod } from './types';
@@ -380,6 +381,7 @@ const App: React.FC = () => {
         ]);
         const compList = compSnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })) as CompanyInfo[];
         setRegisteredCompanies(compList);
+        // Fix: Corrected name from 'userDataSnapshot' to 'usersListData' and removed redundant code
         const usersListData = usersSnapshot.docs.map(doc => ({ ...doc.data(), id: doc.id })) as UserInfo[];
         setUsersList(usersListData);
       } catch (err) {
@@ -1228,7 +1230,7 @@ const App: React.FC = () => {
                             <h3 className="text-2xl font-black">Nova Empresa</h3>
                             <div className="h-10 w-10 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-600">
                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
                                 </svg>
                             </div>
                         </div>
@@ -1465,32 +1467,32 @@ const App: React.FC = () => {
 
         {isPdfModalOpen && (
           <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-[100]">
-            <div className="bg-white p-10 rounded-[2.5rem] w-full max-w-sm shadow-2xl text-center">
+            <div className="bg-white p-6 rounded-3xl w-full max-w-xs shadow-2xl text-center">
               <h3 className="text-xl font-black mb-2">Gerar Relatório PDF</h3>
-              <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-8">Selecione o tipo de relatório</p>
-              <div className="space-y-4">
+              <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-6">Selecione o tipo de relatório</p>
+              <div className="space-y-3">
                 <button 
                   onClick={() => { setPendingReportType('inflow'); setIsPdfModalOpen(false); setIsGroupFilterModalOpen(true); }}
-                  className="w-full bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-black py-4 rounded-2xl text-sm uppercase tracking-widest transition-all border border-emerald-100"
+                  className="w-full bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-black py-3 rounded-2xl text-[11px] uppercase tracking-widest transition-all border border-emerald-100"
                 >
                   Relatório de Entradas
                 </button>
                 <button 
                   onClick={() => { setPendingReportType('outflow'); setIsPdfModalOpen(false); setIsGroupFilterModalOpen(true); }}
-                  className="w-full bg-rose-50 text-rose-700 hover:bg-rose-100 font-black py-4 rounded-2xl text-sm uppercase tracking-widest transition-all border border-rose-100"
+                  className="w-full bg-rose-50 text-rose-700 hover:bg-rose-100 font-black py-3 rounded-2xl text-[11px] uppercase tracking-widest transition-all border border-rose-100"
                 >
                   Relatório de Saídas
                 </button>
                 <button 
                   onClick={() => { setPendingReportType('all'); setIsPdfModalOpen(false); setIsGroupFilterModalOpen(true); }}
-                  className="w-full bg-slate-800 text-white hover:bg-black font-black py-4 rounded-2xl text-sm uppercase tracking-widest transition-all"
+                  className="w-full bg-slate-800 text-white hover:bg-black font-black py-3 rounded-2xl text-[11px] uppercase tracking-widest transition-all"
                 >
                   Relatório Geral
                 </button>
               </div>
               <button 
                 onClick={() => setIsPdfModalOpen(false)}
-                className="mt-8 text-xs font-bold text-slate-400 hover:text-slate-600"
+                className="mt-6 text-[10px] font-bold text-slate-400 hover:text-slate-600 uppercase tracking-widest"
               >
                 Cancelar
               </button>
@@ -1500,35 +1502,35 @@ const App: React.FC = () => {
 
         {isGroupFilterModalOpen && (
           <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-[110]">
-            <div className="bg-white p-10 rounded-[2.5rem] w-full max-sm shadow-2xl text-center animate-in zoom-in duration-200">
-              <div className="w-16 h-16 bg-indigo-50 rounded-full flex items-center justify-center mx-auto mb-6">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <div className="bg-white p-6 rounded-3xl w-full max-w-xs shadow-2xl text-center animate-in zoom-in duration-200">
+              <div className="w-12 h-12 bg-indigo-50 rounded-full flex items-center justify-center mx-auto mb-4">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
                 </svg>
               </div>
-              <h3 className="text-xl font-black mb-4">Inclusão de Grupo</h3>
-              <p className="text-sm text-slate-600 font-bold mb-8 leading-relaxed">
-                Você deseja baixar o PDF com <span className="text-indigo-600">Transf. Contas Grupo</span>?
+              <h3 className="text-lg font-black mb-2">Inclusão de Grupo</h3>
+              <p className="text-[11px] text-slate-600 font-bold mb-6 leading-relaxed uppercase tracking-tight">
+                Deseja incluir <span className="text-indigo-600">Transf. Contas Grupo</span>?
               </p>
-              <div className="flex gap-4">
+              <div className="flex gap-3">
                 <button 
                   onClick={() => pendingReportType && handleGeneratePdf(pendingReportType, true)}
-                  className="flex-1 bg-indigo-600 text-white font-black py-4 rounded-2xl text-xs uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100"
+                  className="flex-1 bg-indigo-600 text-white font-black py-3 rounded-xl text-[10px] uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100"
                 >
                   Sim
                 </button>
                 <button 
                   onClick={() => pendingReportType && handleGeneratePdf(pendingReportType, false)}
-                  className="flex-1 bg-slate-100 text-slate-600 font-black py-4 rounded-2xl text-xs uppercase tracking-widest hover:bg-slate-200 transition-all"
+                  className="flex-1 bg-slate-100 text-slate-600 font-black py-3 rounded-xl text-[10px] uppercase tracking-widest hover:bg-slate-200 transition-all"
                 >
                   Não
                 </button>
               </div>
               <button 
                 onClick={() => { setIsGroupFilterModalOpen(false); setPendingReportType(null); }}
-                className="mt-6 text-[10px] font-black uppercase text-slate-400 hover:text-slate-600 tracking-widest"
+                className="mt-6 text-[9px] font-black uppercase text-slate-400 hover:text-slate-600 tracking-widest"
               >
-                Cancelar Exportação
+                Cancelar
               </button>
             </div>
           </div>
