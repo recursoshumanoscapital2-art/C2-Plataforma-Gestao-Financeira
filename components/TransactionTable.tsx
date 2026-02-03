@@ -99,15 +99,15 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
     setActiveFilter(activeFilter === column ? null : column);
   };
 
-  const HeaderCell = ({ label, field, type = 'select', options = [], align = 'left' }: { label: string, field: keyof ColumnFilters, type?: 'select' | 'date' | 'text', options?: {label: string, value: string}[], align?: 'left' | 'right' }) => {
+  const HeaderCell = ({ label, field, type = 'select', options = [], align = 'left', className = '' }: { label: string, field: keyof ColumnFilters, type?: 'select' | 'date' | 'text', options?: {label: string, value: string}[], align?: 'left' | 'right', className?: string }) => {
     const isActive = activeFilter === field;
     const hasFilter = columnFilters[field] !== '';
 
     return (
-      <th className={`px-3 py-5 relative ${align === 'right' ? 'text-right' : ''}`}>
+      <th className={`${className || 'px-2.5'} py-5 relative ${align === 'right' ? 'text-right' : ''}`}>
         <button 
           onClick={() => toggleFilter(field)}
-          className={`flex items-center gap-2 text-[10px] font-black uppercase tracking-widest transition-colors hover:text-indigo-600 focus:outline-none ${
+          className={`flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest transition-colors hover:text-indigo-600 focus:outline-none ${
             align === 'right' ? 'ml-auto flex-row-reverse' : ''
           } ${
             hasFilter ? 'text-indigo-600' : 'text-slate-400'
@@ -120,7 +120,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
         </button>
 
         {isActive && (
-          <div ref={filterRef} className={`absolute ${align === 'right' ? 'right-3' : 'left-3'} top-full mt-1 z-50 bg-white border border-slate-200 shadow-2xl rounded-xl p-3 min-w-[200px] animate-in fade-in zoom-in duration-150 text-left`}>
+          <div ref={filterRef} className={`absolute ${align === 'right' ? 'right-2.5' : 'left-2.5'} top-full mt-1 z-50 bg-white border border-slate-200 shadow-2xl rounded-xl p-3 min-w-[200px] animate-in fade-in zoom-in duration-150 text-left`}>
             {type === 'date' ? (
               <div className="space-y-2">
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Filtrar por Data</p>
@@ -257,37 +257,37 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                   options={registeredCompanies.map(c => ({ label: c.name, value: c.cnpj }))} 
                 />
                 <HeaderCell label="Banco" field="payingBank" options={uniqueData.banks.map(b => ({ label: b, value: b }))} />
-                <HeaderCell label="Tipo" field="type" options={['entrada', 'saída', 'saldo manual'].map(t => ({ label: t, value: t }))} />
+                <HeaderCell label="Tipo" field="type" className="pl-0.5 pr-2.5" options={['entrada', 'saída', 'saldo manual'].map(t => ({ label: t, value: t }))} />
                 <HeaderCell label="Origem" field="origin" options={uniqueData.origins.map(o => ({ label: o, value: o }))} />
                 <HeaderCell label="Favorecido" field="counterpartyName" options={uniqueData.counterparties.map(c => ({ label: c, value: c }))} />
-                <HeaderCell label="Valor" field="amount" type="text" align="right" />
-                <th className="px-3 py-5 w-44 text-[10px] font-black uppercase tracking-widest text-slate-400">Observações</th>
-                <th className="px-2 py-5 w-20 text-[10px] font-black uppercase tracking-widest text-slate-400 text-center">Ações</th>
+                <HeaderCell label="Valor" field="amount" type="text" align="right" className="pl-0.5 pr-2.5" />
+                <th className="px-5 py-5 w-72 text-[10px] font-black uppercase tracking-widest text-slate-400">Observações</th>
+                <th className="px-2.5 py-5 w-20 text-[10px] font-black uppercase tracking-widest text-slate-400 text-center">Ações</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
               {transactions.map((t) => {
                 return (
                   <tr key={t.id} className="hover:bg-indigo-50/20 transition-colors group">
-                    <td className="px-3 py-4 text-[11px] font-bold text-slate-500 whitespace-nowrap">
+                    <td className="px-2.5 py-4 text-[11px] font-bold text-slate-500 whitespace-nowrap">
                       {t.date.split('T')[0].split('-').reverse().join('/')}
                     </td>
 
-                    <td className="px-3 py-4">
+                    <td className="px-2.5 py-4">
                       <div className="text-[11px] font-black text-slate-800 truncate" title={t.ownerName}>
                         {t.ownerName}
                       </div>
                       <div className="text-[9px] text-slate-400 font-mono tracking-tight mt-0.5">{t.ownerCnpj}</div>
                     </td>
 
-                    <td className="px-3 py-4">
+                    <td className="px-2.5 py-4">
                       <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-600 truncate" title={t.ownerBank}>
                         <div className="w-1.5 h-1.5 rounded-full bg-slate-300"></div>
                         <span className="truncate">{t.ownerBank}</span>
                       </div>
                     </td>
 
-                    <td className="px-3 py-4 text-center relative">
+                    <td className="pl-0.5 pr-2.5 py-4 text-left relative">
                       {editingCell?.id === t.id && editingCell.field === 'type' ? (
                         <select
                           autoFocus
@@ -318,7 +318,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                       )}
                     </td>
 
-                    <td className="px-3 py-4">
+                    <td className="px-2.5 py-4">
                       {editingCell?.id === t.id && editingCell.field === 'origin' ? (
                         <input
                           autoFocus
@@ -333,18 +333,13 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                           onClick={() => startEditing(t.id, 'origin', t.origin)}
                           className={`text-[11px] font-bold cursor-pointer border-b border-transparent hover:border-indigo-200 truncate flex items-center gap-1.5 min-h-[1.2rem] ${!t.origin ? 'text-slate-300' : 'text-slate-600'}`}
                         >
-                          {t.origin || <span className="italic font-medium">Adicionar origem...</span>}
-                          {!t.origin && (
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-3.5 w-3.5 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                              <path strokeLinecap="round" strokeLinejoin="round" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                            </svg>
-                          )}
+                          {t.origin || <span className="italic font-medium">Adicionar...</span>}
                         </div>
                       )}
                     </td>
 
-                    <td className="px-3 py-4">
-                      <div className="flex items-center gap-2 overflow-hidden">
+                    <td className="px-2.5 py-4">
+                      <div className="flex items-center gap-1.5 overflow-hidden">
                         <div className="flex-1 min-w-0 flex items-center overflow-hidden">
                           <div className="text-[12px] font-black text-slate-900 truncate leading-tight mr-1" title={t.counterpartyName || '-'}>
                             {t.counterpartyName || '-'}
@@ -358,7 +353,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                       )}
                     </td>
 
-                    <td className={`px-3 py-4 text-sm font-black text-right whitespace-nowrap ${
+                    <td className={`pl-0.5 pr-2.5 py-4 text-sm font-black text-right whitespace-nowrap ${
                       t.type === TransactionType.INFLOW ? 'text-emerald-600' : 
                       t.type === TransactionType.OUTFLOW ? 'text-rose-600' : 'text-indigo-600'
                     }`}>
@@ -383,7 +378,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                       )}
                     </td>
 
-                    <td className="px-3 py-4">
+                    <td className="px-5 py-4">
                       {editingCell?.id === t.id && editingCell.field === 'notes' ? (
                         <input
                           autoFocus
@@ -405,11 +400,11 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                       )}
                     </td>
 
-                    <td className="px-2 py-4 text-center">
+                    <td className="px-2.5 py-4 text-center">
                       {duplicateIds.has(t.id) && (
                         <button 
                           onClick={() => onDeleteTransaction(t.id)}
-                          className="p-2 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all active:scale-90"
+                          className="p-1.5 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all active:scale-90"
                           title="Excluir duplicata"
                         >
                           <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
