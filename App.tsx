@@ -583,33 +583,28 @@ const App: React.FC = () => {
       // LÓGICA DE DESDUPLICAÇÃO
       // Filtramos transações que já existem no banco de dados ou que já foram extraídas no lote atual
       const uniqueToSave: Transaction[] = [];
-      const normalize = (s: string) => (s || '').toLowerCase().trim().replace(/\D/g, '');
       const cleanStr = (s: string) => (s || '').toLowerCase().trim();
 
       for (const newT of allExtractedTransactions) {
         const newDate = newT.date.split('T')[0];
         const newAmt = Math.abs(newT.amount).toFixed(2);
         const newBank = cleanStr(newT.ownerBank);
-        const newCompCnpj = normalize(newT.ownerCnpj);
-        const newCompName = cleanStr(newT.ownerName);
+        const newType = newT.type;
+        const newParty = cleanStr(newT.counterpartyName);
 
-        // Verifica se existe duplicata no banco de dados
+        // Verifica se existe duplicata no banco de dados (exatamente mesmos campos-chave)
         const isDuplicateInDb = transactions.some(ext => {
           const extDate = ext.date.split('T')[0];
           const extAmt = Math.abs(ext.amount).toFixed(2);
           const extBank = cleanStr(ext.ownerBank);
-          const extCompCnpj = normalize(ext.ownerCnpj);
-          const extCompName = cleanStr(ext.ownerName);
+          const extType = ext.type;
+          const extParty = cleanStr(ext.counterpartyName);
 
-          const dateMatch = extDate === newDate;
-          const amtMatch = extAmt === newAmt;
-          const bankMatch = extBank === newBank;
-          // Favorecido (counterpartyName) removido da conferência conforme solicitado
-          const compMatch = extCompCnpj && newCompCnpj 
-            ? extCompCnpj === newCompCnpj 
-            : extCompName === newCompName;
-
-          return dateMatch && amtMatch && bankMatch && compMatch;
+          return extDate === newDate && 
+                 extAmt === newAmt && 
+                 extBank === newBank && 
+                 extType === newType && 
+                 extParty === newParty;
         });
 
         // Verifica se existe duplicata já processada neste lote
@@ -617,18 +612,14 @@ const App: React.FC = () => {
           const extDate = ext.date.split('T')[0];
           const extAmt = Math.abs(ext.amount).toFixed(2);
           const extBank = cleanStr(ext.ownerBank);
-          const extCompCnpj = normalize(ext.ownerCnpj);
-          const extCompName = cleanStr(ext.ownerName);
+          const extType = ext.type;
+          const extParty = cleanStr(ext.counterpartyName);
 
-          const dateMatch = extDate === newDate;
-          const amtMatch = extAmt === newAmt;
-          const bankMatch = extBank === newBank;
-          // Favorecido removido da conferência para o lote também
-          const compMatch = extCompCnpj && newCompCnpj 
-            ? extCompCnpj === newCompCnpj 
-            : extCompName === newCompName;
-
-          return dateMatch && amtMatch && bankMatch && compMatch;
+          return extDate === newDate && 
+                 extAmt === newAmt && 
+                 extBank === newBank && 
+                 extType === newType && 
+                 extParty === newParty;
         });
 
         if (!isDuplicateInDb && !isDuplicateInBatch) {
@@ -642,7 +633,7 @@ const App: React.FC = () => {
         setPendingFiles([]);
         navigate('/');
         const skipped = allExtractedTransactions.length - uniqueToSave.length;
-        alert(`Importação concluída! ${uniqueToSave.length} transações salvas.${skipped > 0 ? ` ${skipped} transações foram ignoradas por serem duplicatas.` : ''}`);
+        alert(`Importação concluída! ${uniqueToSave.length} transações salvas.${skipped > 0 ? ` ${skipped} transações foram ignoradas por serem duplicatas exatas (mesmo valor, banco, favorecido, tipo e data).` : ''}`);
       }
     } catch (err: any) { 
       if (err.message.includes("interrompida")) {
@@ -1237,7 +1228,7 @@ const App: React.FC = () => {
                             <h3 className="text-2xl font-black">Nova Empresa</h3>
                             <div className="h-10 w-10 bg-indigo-50 rounded-xl flex items-center justify-center text-indigo-600">
                                 <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
+                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4" />
                                 </svg>
                             </div>
                         </div>
