@@ -590,7 +590,6 @@ const App: React.FC = () => {
         const newDate = newT.date.split('T')[0];
         const newAmt = Math.abs(newT.amount).toFixed(2);
         const newBank = cleanStr(newT.ownerBank);
-        const newParty = cleanStr(newT.counterpartyName);
         const newCompCnpj = normalize(newT.ownerCnpj);
         const newCompName = cleanStr(newT.ownerName);
 
@@ -599,19 +598,18 @@ const App: React.FC = () => {
           const extDate = ext.date.split('T')[0];
           const extAmt = Math.abs(ext.amount).toFixed(2);
           const extBank = cleanStr(ext.ownerBank);
-          const extParty = cleanStr(ext.counterpartyName);
           const extCompCnpj = normalize(ext.ownerCnpj);
           const extCompName = cleanStr(ext.ownerName);
 
           const dateMatch = extDate === newDate;
           const amtMatch = extAmt === newAmt;
           const bankMatch = extBank === newBank;
-          const partyMatch = extParty === newParty;
+          // Favorecido (counterpartyName) removido da conferência conforme solicitado
           const compMatch = extCompCnpj && newCompCnpj 
             ? extCompCnpj === newCompCnpj 
             : extCompName === newCompName;
 
-          return dateMatch && amtMatch && bankMatch && partyMatch && compMatch;
+          return dateMatch && amtMatch && bankMatch && compMatch;
         });
 
         // Verifica se existe duplicata já processada neste lote
@@ -619,11 +617,18 @@ const App: React.FC = () => {
           const extDate = ext.date.split('T')[0];
           const extAmt = Math.abs(ext.amount).toFixed(2);
           const extBank = cleanStr(ext.ownerBank);
-          const extParty = cleanStr(ext.counterpartyName);
           const extCompCnpj = normalize(ext.ownerCnpj);
           const extCompName = cleanStr(ext.ownerName);
 
-          return extDate === newDate && extAmt === newAmt && extBank === newBank && extParty === newParty && (extCompCnpj && newCompCnpj ? extCompCnpj === newCompCnpj : extCompName === newCompName);
+          const dateMatch = extDate === newDate;
+          const amtMatch = extAmt === newAmt;
+          const bankMatch = extBank === newBank;
+          // Favorecido removido da conferência para o lote também
+          const compMatch = extCompCnpj && newCompCnpj 
+            ? extCompCnpj === newCompCnpj 
+            : extCompName === newCompName;
+
+          return dateMatch && amtMatch && bankMatch && compMatch;
         });
 
         if (!isDuplicateInDb && !isDuplicateInBatch) {
@@ -674,6 +679,17 @@ const App: React.FC = () => {
     updateDoc(doc(db, "transactions", id), updates).catch(err => {
       console.error("Erro ao persistir edição:", err);
     });
+  }, []);
+
+  const handleDeleteTransaction = useCallback(async (id: string) => {
+    if (!confirm("Deseja realmente excluir esta transação?")) return;
+    try {
+      await deleteDoc(doc(db, "transactions", id));
+      // A atualização do estado ocorrerá via onSnapshot
+    } catch (err) {
+      console.error("Erro ao excluir transação:", err);
+      alert("Erro ao excluir a transação.");
+    }
   }, []);
 
   const handleClearAllTransactions = async () => {
@@ -1005,6 +1021,7 @@ const App: React.FC = () => {
                               transactions={filteredTransactions} 
                               allTransactions={normalizedTransactions} 
                               onUpdateTransaction={handleUpdateTransaction} 
+                              onDeleteTransaction={handleDeleteTransaction}
                               selectedCnpj={selectedCnpj} 
                               columnFilters={columnFilters} 
                               onColumnFilterChange={handleColumnFilterChange}
@@ -1347,7 +1364,7 @@ const App: React.FC = () => {
                               </span>
                             </td>
                             <td className="px-6 py-4">
-                              <button onClick={() => user.id && handleToggleUserStatus(user.id, user.active)} className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase transition-colors ${ user.active ? 'bg-rose-50 text-rose-600 hover:bg-rose-100' : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100' }`}>
+                              <button onClick={() => user.id && handleToggleUserStatus(user.id, user.active)} className={`px-4 py-2 rounded-lg text-[10px] font-black uppercase transition-colors ${ user.active ? 'bg-rose-50 text-rose-600 hover:bg-rose-100' : 'bg-emerald-50 text-emerald-700 border-emerald-100' }`}>
                                 {user.active ? 'Inativar' : 'Ativar'}
                               </button>
                             </td>
@@ -1492,7 +1509,7 @@ const App: React.FC = () => {
 
         {isGroupFilterModalOpen && (
           <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-[110]">
-            <div className="bg-white p-10 rounded-[2.5rem] w-full max-w-sm shadow-2xl text-center animate-in zoom-in duration-200">
+            <div className="bg-white p-10 rounded-[2.5rem] w-full max-sm shadow-2xl text-center animate-in zoom-in duration-200">
               <div className="w-16 h-16 bg-indigo-50 rounded-full flex items-center justify-center mx-auto mb-6">
                 <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-indigo-600" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4" />
