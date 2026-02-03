@@ -80,8 +80,9 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
   const duplicateIds = useMemo(() => {
     const counts = new Map<string, string[]>();
     transactions.forEach(t => {
-      // Chave de duplicidade: Valor, Banco, Favorecido, Tipo e Origem
-      const key = `${t.amount}_${t.ownerBank}_${t.counterpartyName}_${t.type}_${t.origin}`;
+      // Chave de duplicidade: Data (Y-M-D), Valor, Banco, Favorecido, Tipo e Origem
+      const datePart = t.date ? t.date.split('T')[0] : 'no-date';
+      const key = `${datePart}_${t.amount}_${t.ownerBank}_${t.counterpartyName}_${t.type}_${t.origin}`;
       if (!counts.has(key)) counts.set(key, []);
       counts.get(key)!.push(t.id);
     });
