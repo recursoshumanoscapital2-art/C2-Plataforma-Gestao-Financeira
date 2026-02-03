@@ -77,6 +77,24 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
     };
   }, [allTransactions]);
 
+  const duplicateIds = useMemo(() => {
+    const counts = new Map<string, string[]>();
+    transactions.forEach(t => {
+      // Chave de duplicidade: Valor, Banco, Favorecido, Tipo e Origem
+      const key = `${t.amount}_${t.ownerBank}_${t.counterpartyName}_${t.type}_${t.origin}`;
+      if (!counts.has(key)) counts.set(key, []);
+      counts.get(key)!.push(t.id);
+    });
+    
+    const ids = new Set<string>();
+    counts.forEach(group => {
+      if (group.length > 1) {
+        group.forEach(id => ids.add(id));
+      }
+    });
+    return ids;
+  }, [transactions]);
+
   const toggleFilter = (column: string) => {
     setActiveFilter(activeFilter === column ? null : column);
   };
@@ -326,31 +344,14 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                     </td>
 
                     <td className="px-3 py-4">
-                      {editingCell?.id === t.id && editingCell.field === 'counterpartyName' ? (
-                        <input
-                          autoFocus
-                          className="w-full border-2 border-indigo-400 rounded-lg px-2 py-1.5 text-[11px] outline-none shadow-sm"
-                          value={tempValue}
-                          onChange={(e) => setTempValue(e.target.value)}
-                          onBlur={saveEdit}
-                          onKeyDown={handleKeyDown}
-                        />
-                      ) : (
-                        <div 
-                          onClick={() => startEditing(t.id, 'counterpartyName', t.counterpartyName)}
-                          className="cursor-pointer group/item flex items-center gap-2 overflow-hidden"
-                        >
-                          <div className="flex-1 min-w-0 flex items-center overflow-hidden">
-                            <div className="text-[12px] font-black text-slate-900 truncate border-b border-transparent group-hover/item:border-indigo-200 leading-tight mr-1" title={t.counterpartyName || '-'}>
-                              {t.counterpartyName || '-'}
-                            </div>
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 text-slate-300 group-hover/item:text-indigo-400 inline shrink-0 transition-colors" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z" />
-                            </svg>
+                      <div className="flex items-center gap-2 overflow-hidden">
+                        <div className="flex-1 min-w-0 flex items-center overflow-hidden">
+                          <div className="text-[12px] font-black text-slate-900 truncate leading-tight mr-1" title={t.counterpartyName || '-'}>
+                            {t.counterpartyName || '-'}
                           </div>
                         </div>
-                      )}
-                      {editingCell?.id !== t.id && t.type !== TransactionType.INFLOW && (
+                      </div>
+                      {t.type !== TransactionType.INFLOW && (
                         <div className="text-[9px] text-slate-400 truncate mt-0.5 opacity-80" title={t.description}>
                           {t.description}
                         </div>
@@ -405,15 +406,17 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                     </td>
 
                     <td className="px-2 py-4 text-center">
-                      <button 
-                        onClick={() => onDeleteTransaction(t.id)}
-                        className="p-2 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all active:scale-90"
-                        title="Excluir transação"
-                      >
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                        </svg>
-                      </button>
+                      {duplicateIds.has(t.id) && (
+                        <button 
+                          onClick={() => onDeleteTransaction(t.id)}
+                          className="p-2 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all active:scale-90"
+                          title="Excluir duplicata"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      )}
                     </td>
                   </tr>
                 );
