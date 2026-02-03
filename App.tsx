@@ -322,6 +322,8 @@ const App: React.FC = () => {
     date: '', ownerName: '', payingBank: '', type: '', origin: '', counterpartyName: '', amount: '', notes: ''
   });
 
+  const [isExportFormatModalOpen, setIsExportFormatModalOpen] = useState(false);
+  const [selectedExportFormat, setSelectedExportFormat] = useState<'pdf' | 'excel' | null>(null);
   const [isPdfModalOpen, setIsPdfModalOpen] = useState(false);
   const [isGroupFilterModalOpen, setIsGroupFilterModalOpen] = useState(false);
   const [pendingReportType, setPendingReportType] = useState<'inflow' | 'outflow' | 'all' | null>(null);
@@ -845,6 +847,50 @@ const App: React.FC = () => {
     setPasswordVisibility(prev => ({ ...prev, [id]: !prev[id] }));
   };
 
+  const handleGenerateExcel = (type: 'inflow' | 'outflow' | 'all', includeGroupTransfers: boolean) => {
+    let data = [...filteredTransactions];
+    
+    // Filtrar transferências de grupo se o usuário escolheu "Não"
+    if (!includeGroupTransfers) {
+      data = data.filter(t => t.origin !== "Transf. Contas Grupo");
+    }
+
+    let filename = "relatorio-geral";
+    if (type === 'inflow') {
+      data = data.filter(t => t.type === TransactionType.INFLOW);
+      filename = "relatorio-entradas";
+    } else if (type === 'outflow') {
+      data = data.filter(t => t.type === TransactionType.OUTFLOW);
+      filename = "relatorio-saidas";
+    }
+
+    const headers = ["Data", "Empresa", "CNPJ", "Banco", "Tipo", "Origem", "Favorecido", "Valor", "Observações"];
+    const rows = data.map(t => [
+      new Date(t.date).toLocaleDateString('pt-BR'),
+      t.ownerName,
+      t.ownerCnpj,
+      t.payingBank,
+      t.type,
+      t.origin,
+      t.counterpartyName,
+      t.amount.toLocaleString('pt-BR', { minimumFractionDigits: 2 }),
+      t.notes
+    ]);
+
+    const csvContent = "\ufeff" + [headers, ...rows].map(e => e.map(cell => `"${(cell || '').toString().replace(/"/g, '""')}"`).join(";")).join("\n");
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `${filename}-${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+    URL.revokeObjectURL(url);
+    
+    setIsGroupFilterModalOpen(false);
+    setPendingReportType(null);
+    setSelectedExportFormat(null);
+  };
+
   const handleGeneratePdf = (type: 'inflow' | 'outflow' | 'all', includeGroupTransfers: boolean) => {
     let data = [...filteredTransactions];
     
@@ -864,6 +910,7 @@ const App: React.FC = () => {
     setReportDataForPrint({ title, data, type });
     setIsGroupFilterModalOpen(false);
     setPendingReportType(null);
+    setSelectedExportFormat(null);
   };
   
   const handleLoginSuccess = (user: UserInfo) => {
@@ -944,13 +991,13 @@ const App: React.FC = () => {
                     </button>
                   )}
                   <button 
-                    onClick={() => setIsPdfModalOpen(true)}
+                    onClick={() => setIsExportFormatModalOpen(true)}
                     className="bg-slate-100 hover:bg-slate-200 text-slate-600 px-5 py-2 rounded-xl text-sm font-bold flex items-center gap-2 transition-colors"
                   >
                     <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
                       <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                     </svg>
-                    Baixar PDF
+                    Baixar
                   </button>
                   <button 
                     onClick={async () => {
@@ -1482,11 +1529,40 @@ const App: React.FC = () => {
           </div>
         )}
 
+        {isExportFormatModalOpen && (
+          <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-[100]">
+            <div className="bg-white p-6 rounded-3xl w-full max-w-xs shadow-2xl text-center">
+              <h3 className="text-xl font-black mb-2">Baixar Relatório</h3>
+              <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-6">Selecione o formato de exportação</p>
+              <div className="space-y-3">
+                <button 
+                  onClick={() => { setSelectedExportFormat('pdf'); setIsExportFormatModalOpen(false); setIsPdfModalOpen(true); }}
+                  className="w-full bg-slate-100 text-slate-700 hover:bg-slate-200 font-black py-3 rounded-2xl text-[11px] uppercase tracking-widest transition-all"
+                >
+                  PDF (Documento)
+                </button>
+                <button 
+                  onClick={() => { setSelectedExportFormat('excel'); setIsExportFormatModalOpen(false); setIsPdfModalOpen(true); }}
+                  className="w-full bg-emerald-50 text-emerald-700 hover:bg-emerald-100 font-black py-3 rounded-2xl text-[11px] uppercase tracking-widest transition-all border border-emerald-100"
+                >
+                  Excel (Planilha)
+                </button>
+              </div>
+              <button 
+                onClick={() => setIsExportFormatModalOpen(false)}
+                className="mt-6 text-[10px] font-bold text-slate-400 hover:text-slate-600 uppercase tracking-widest"
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        )}
+
         {isPdfModalOpen && (
           <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center p-4 z-[100]">
             <div className="bg-white p-6 rounded-3xl w-full max-w-xs shadow-2xl text-center">
-              <h3 className="text-xl font-black mb-2">Gerar Relatório PDF</h3>
-              <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-6">Selecione o tipo de relatório</p>
+              <h3 className="text-xl font-black mb-2">Opções do Relatório</h3>
+              <p className="text-xs text-slate-400 font-bold uppercase tracking-wider mb-6">Formato: {selectedExportFormat?.toUpperCase()}</p>
               <div className="space-y-3">
                 <button 
                   onClick={() => { setPendingReportType('inflow'); setIsPdfModalOpen(false); setIsGroupFilterModalOpen(true); }}
@@ -1508,10 +1584,10 @@ const App: React.FC = () => {
                 </button>
               </div>
               <button 
-                onClick={() => setIsPdfModalOpen(false)}
+                onClick={() => { setIsPdfModalOpen(false); setSelectedExportFormat(null); }}
                 className="mt-6 text-[10px] font-bold text-slate-400 hover:text-slate-600 uppercase tracking-widest"
               >
-                Cancelar
+                Voltar
               </button>
             </div>
           </div>
@@ -1527,24 +1603,34 @@ const App: React.FC = () => {
               </div>
               <h3 className="text-lg font-black mb-2">Inclusão de Grupo</h3>
               <p className="text-[11px] text-slate-600 font-bold mb-6 leading-relaxed uppercase tracking-tight">
-                Deseja incluir <span className="text-indigo-600">Transf. Contas Grupo</span>?
+                Deseja incluir <span className="text-indigo-600">Transf. Contas Grupo</span> no seu arquivo {selectedExportFormat?.toUpperCase()}?
               </p>
               <div className="flex gap-3">
                 <button 
-                  onClick={() => pendingReportType && handleGeneratePdf(pendingReportType, true)}
+                  onClick={() => {
+                    if (pendingReportType) {
+                      if (selectedExportFormat === 'pdf') handleGeneratePdf(pendingReportType, true);
+                      else handleGenerateExcel(pendingReportType, true);
+                    }
+                  }}
                   className="flex-1 bg-indigo-600 text-white font-black py-3 rounded-xl text-[10px] uppercase tracking-widest hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100"
                 >
                   Sim
                 </button>
                 <button 
-                  onClick={() => pendingReportType && handleGeneratePdf(pendingReportType, false)}
+                  onClick={() => {
+                    if (pendingReportType) {
+                      if (selectedExportFormat === 'pdf') handleGeneratePdf(pendingReportType, false);
+                      else handleGenerateExcel(pendingReportType, false);
+                    }
+                  }}
                   className="flex-1 bg-slate-100 text-slate-600 font-black py-3 rounded-xl text-[10px] uppercase tracking-widest hover:bg-slate-200 transition-all"
                 >
                   Não
                 </button>
               </div>
               <button 
-                onClick={() => { setIsGroupFilterModalOpen(false); setPendingReportType(null); }}
+                onClick={() => { setIsGroupFilterModalOpen(false); setPendingReportType(null); setSelectedExportFormat(null); }}
                 className="mt-6 text-[9px] font-black uppercase text-slate-400 hover:text-slate-600 tracking-widest"
               >
                 Cancelar
