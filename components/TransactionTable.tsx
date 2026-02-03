@@ -86,7 +86,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
     const hasFilter = columnFilters[field] !== '';
 
     return (
-      <th className={`px-6 py-5 relative ${align === 'right' ? 'text-right' : ''}`}>
+      <th className={`px-3 py-5 relative ${align === 'right' ? 'text-right' : ''}`}>
         <button 
           onClick={() => toggleFilter(field)}
           className={`flex items-center gap-2 text-[10px] font-black uppercase tracking-widest transition-colors hover:text-indigo-600 focus:outline-none ${
@@ -102,7 +102,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
         </button>
 
         {isActive && (
-          <div ref={filterRef} className={`absolute ${align === 'right' ? 'right-6' : 'left-6'} top-full mt-1 z-50 bg-white border border-slate-200 shadow-2xl rounded-xl p-3 min-w-[200px] animate-in fade-in zoom-in duration-150 text-left`}>
+          <div ref={filterRef} className={`absolute ${align === 'right' ? 'right-3' : 'left-3'} top-full mt-1 z-50 bg-white border border-slate-200 shadow-2xl rounded-xl p-3 min-w-[200px] animate-in fade-in zoom-in duration-150 text-left`}>
             {type === 'date' ? (
               <div className="space-y-2">
                 <p className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Filtrar por Data</p>
@@ -229,7 +229,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
         </div>
       ) : (
         <div className="overflow-x-auto custom-scrollbar">
-          <table className="w-full text-left border-collapse table-fixed min-w-[1300px]">
+          <table className="w-full text-left border-collapse table-fixed min-w-[1100px]">
             <thead>
               <tr className="bg-slate-50/80 border-b border-slate-100">
                 <HeaderCell label="Data" field="date" type="date" />
@@ -243,33 +243,33 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                 <HeaderCell label="Origem" field="origin" options={uniqueData.origins.map(o => ({ label: o, value: o }))} />
                 <HeaderCell label="Favorecido" field="counterpartyName" options={uniqueData.counterparties.map(c => ({ label: c, value: c }))} />
                 <HeaderCell label="Valor" field="amount" type="text" align="right" />
-                <th className="px-6 py-5 w-44 text-[10px] font-black uppercase tracking-widest text-slate-400">Observações</th>
-                <th className="px-4 py-5 w-20 text-[10px] font-black uppercase tracking-widest text-slate-400 text-center">Ações</th>
+                <th className="px-3 py-5 w-44 text-[10px] font-black uppercase tracking-widest text-slate-400">Observações</th>
+                <th className="px-2 py-5 w-20 text-[10px] font-black uppercase tracking-widest text-slate-400 text-center">Ações</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
               {transactions.map((t) => {
                 return (
                   <tr key={t.id} className="hover:bg-indigo-50/20 transition-colors group">
-                    <td className="px-6 py-4 text-[11px] font-bold text-slate-500 whitespace-nowrap">
+                    <td className="px-3 py-4 text-[11px] font-bold text-slate-500 whitespace-nowrap">
                       {t.date.split('T')[0].split('-').reverse().join('/')}
                     </td>
 
-                    <td className="px-6 py-4">
+                    <td className="px-3 py-4">
                       <div className="text-[11px] font-black text-slate-800 truncate" title={t.ownerName}>
                         {t.ownerName}
                       </div>
                       <div className="text-[9px] text-slate-400 font-mono tracking-tight mt-0.5">{t.ownerCnpj}</div>
                     </td>
 
-                    <td className="px-6 py-4">
+                    <td className="px-3 py-4">
                       <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-600 truncate" title={t.ownerBank}>
                         <div className="w-1.5 h-1.5 rounded-full bg-slate-300"></div>
                         <span className="truncate">{t.ownerBank}</span>
                       </div>
                     </td>
 
-                    <td className="px-6 py-4 text-center relative">
+                    <td className="px-3 py-4 text-center relative">
                       {editingCell?.id === t.id && editingCell.field === 'type' ? (
                         <select
                           autoFocus
@@ -288,7 +288,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                       ) : (
                         <span 
                           onClick={() => startEditing(t.id, 'type', t.type)}
-                          className={`px-2.5 py-1 rounded-lg text-[9px] font-black uppercase inline-block border cursor-pointer transition-all hover:scale-105 ${
+                          className={`px-2 py-1 rounded-lg text-[9px] font-black uppercase inline-block border cursor-pointer transition-all hover:scale-105 ${
                           t.type === TransactionType.INFLOW 
                           ? 'bg-emerald-50 text-emerald-700 border-emerald-100' 
                           : t.type === TransactionType.OUTFLOW 
@@ -300,7 +300,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                       )}
                     </td>
 
-                    <td className="px-6 py-4">
+                    <td className="px-3 py-4">
                       {editingCell?.id === t.id && editingCell.field === 'origin' ? (
                         <input
                           autoFocus
@@ -325,7 +325,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                       )}
                     </td>
 
-                    <td className="px-6 py-4">
+                    <td className="px-3 py-4">
                       {editingCell?.id === t.id && editingCell.field === 'counterpartyName' ? (
                         <input
                           autoFocus
@@ -357,7 +357,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                       )}
                     </td>
 
-                    <td className={`px-6 py-4 text-sm font-black text-right whitespace-nowrap ${
+                    <td className={`px-3 py-4 text-sm font-black text-right whitespace-nowrap ${
                       t.type === TransactionType.INFLOW ? 'text-emerald-600' : 
                       t.type === TransactionType.OUTFLOW ? 'text-rose-600' : 'text-indigo-600'
                     }`}>
@@ -382,7 +382,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                       )}
                     </td>
 
-                    <td className="px-6 py-4">
+                    <td className="px-3 py-4">
                       {editingCell?.id === t.id && editingCell.field === 'notes' ? (
                         <input
                           autoFocus
@@ -404,7 +404,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                       )}
                     </td>
 
-                    <td className="px-4 py-4 text-center">
+                    <td className="px-2 py-4 text-center">
                       <button 
                         onClick={() => onDeleteTransaction(t.id)}
                         className="p-2 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition-all active:scale-90"
