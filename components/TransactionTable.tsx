@@ -10,7 +10,7 @@ interface TransactionTableProps {
   selectedCnpj: string | null;
   columnFilters: ColumnFilters;
   onColumnFilterChange: (field: keyof ColumnFilters, value: string) => void;
-  registeredCompanies: any[]; // Adicionado para seguir a lógica do seletor global
+  registeredCompanies: any[]; 
 }
 
 const TransactionTable: React.FC<TransactionTableProps> = ({ 
@@ -26,6 +26,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
   const [editingCell, setEditingCell] = useState<{ id: string, field: keyof Transaction } | null>(null);
   const [tempValue, setTempValue] = useState("");
   const [activeFilter, setActiveFilter] = useState<string | null>(null);
+  const [sortAmount, setSortAmount] = useState<'asc' | 'desc' | 'none'>('none');
   const filterRef = useRef<HTMLDivElement>(null);
   const dateInputRef = useRef<HTMLInputElement>(null);
 
@@ -40,7 +41,6 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
       let valueToSave: any = tempValue;
       
       if (field === 'amount') {
-        // Converte string para número, tratando vírgula como ponto e limpando caracteres não numéricos
         const cleaned = tempValue.replace(/[^\d,.-]/g, '').replace(',', '.');
         valueToSave = parseFloat(cleaned);
         if (isNaN(valueToSave)) {
@@ -80,9 +80,9 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
   const duplicateIds = useMemo(() => {
     const counts = new Map<string, string[]>();
     transactions.forEach(t => {
-      // Chave de duplicidade: Data (Y-M-D), Valor, Banco, Favorecido, Tipo e Origem
+      // Regra de duplicidade solicitada: Valor, Banco, Tipo, Data e Favorecido
       const datePart = t.date ? t.date.split('T')[0] : 'no-date';
-      const key = `${datePart}_${t.amount}_${t.ownerBank}_${t.counterpartyName}_${t.type}_${t.origin}`;
+      const key = `${t.amount}_${t.ownerBank}_${t.type}_${datePart}_${t.counterpartyName}`;
       if (!counts.has(key)) counts.set(key, []);
       counts.get(key)!.push(t.id);
     });
@@ -96,29 +96,61 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
     return ids;
   }, [transactions]);
 
+  const sortedTransactions = useMemo(() => {
+    const result = [...transactions];
+    if (sortAmount === 'asc') {
+      result.sort((a, b) => a.amount - b.amount);
+    } else if (sortAmount === 'desc') {
+      result.sort((a, b) => b.amount - a.amount);
+    }
+    return result;
+  }, [transactions, sortAmount]);
+
   const toggleFilter = (column: string) => {
     setActiveFilter(activeFilter === column ? null : column);
   };
 
-  const HeaderCell = ({ label, field, type = 'select', options = [], align = 'left', className = '' }: { label: string, field: keyof ColumnFilters, type?: 'select' | 'date' | 'text', options?: {label: string, value: string}[], align?: 'left' | 'right', className?: string }) => {
+  const handleToggleSort = () => {
+    setSortAmount(prev => {
+      if (prev === 'none') return 'desc';
+      if (prev === 'desc') return 'asc';
+      return 'none';
+    });
+  };
+
+  const HeaderCell = ({ label, field, type = 'select', options = [], align = 'left', className = '', isSortable = false }: { label: string, field: keyof ColumnFilters, type?: 'select' | 'date' | 'text', options?: {label: string, value: string}[], align?: 'left' | 'right', className?: string, isSortable?: boolean }) => {
     const isActive = activeFilter === field;
     const hasFilter = columnFilters[field] !== '';
 
     return (
       <th className={`${className || 'px-2.5'} py-5 relative ${align === 'right' ? 'text-right' : ''}`}>
-        <button 
-          onClick={() => toggleFilter(field)}
-          className={`flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest transition-colors hover:text-indigo-600 focus:outline-none ${
-            align === 'right' ? 'ml-auto flex-row-reverse' : ''
-          } ${
-            hasFilter ? 'text-indigo-600' : 'text-slate-400'
-          }`}
-        >
-          {label}
-          <svg xmlns="http://www.w3.org/2000/svg" className={`h-3 w-3 transition-transform ${isActive ? 'rotate-180' : ''}`} viewBox="0 0 20 20" fill="currentColor">
-            <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-          </svg>
-        </button>
+        <div className={`flex items-center gap-2 ${align === 'right' ? 'justify-end' : ''}`}>
+          <button 
+            onClick={() => toggleFilter(field)}
+            className={`flex items-center gap-1.5 text-[10px] font-black uppercase tracking-widest transition-colors hover:text-indigo-600 focus:outline-none ${
+              align === 'right' ? 'flex-row-reverse' : ''
+            } ${
+              hasFilter ? 'text-indigo-600' : 'text-slate-400'
+            }`}
+          >
+            {label}
+            <svg xmlns="http://www.w3.org/2000/svg" className={`h-3 w-3 transition-transform ${isActive ? 'rotate-180' : ''}`} viewBox="0 0 20 20" fill="currentColor">
+              <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+            </svg>
+          </button>
+          
+          {isSortable && (
+            <button 
+              onClick={handleToggleSort}
+              className={`p-1 rounded hover:bg-slate-100 transition-colors ${sortAmount !== 'none' ? 'text-indigo-600' : 'text-slate-300'}`}
+              title="Ordenar por valor"
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d={sortAmount === 'asc' ? "M5 15l7-7 7 7" : sortAmount === 'desc' ? "M19 9l-7 7-7-7" : "M7 10l5-5 5 5M7 14l5 5 5-5"} />
+              </svg>
+            </button>
+          )}
+        </div>
 
         {isActive && (
           <div ref={filterRef} className={`absolute ${align === 'right' ? 'right-2.5' : 'left-2.5'} top-full mt-1 z-50 bg-white border border-slate-200 shadow-2xl rounded-xl p-3 min-w-[200px] animate-in fade-in zoom-in duration-150 text-left`}>
@@ -228,7 +260,7 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
         )}
       </div>
 
-      {transactions.length === 0 ? (
+      {sortedTransactions.length === 0 ? (
         <div className="py-24 text-center">
           <div className="w-16 h-16 bg-slate-50 rounded-full flex items-center justify-center mx-auto mb-4 border border-slate-100">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-8 w-8 text-slate-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -261,13 +293,14 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                 <HeaderCell label="Tipo" field="type" className="pl-0.5 pr-2.5" options={['entrada', 'saída', 'saldo manual'].map(t => ({ label: t, value: t }))} />
                 <HeaderCell label="Origem" field="origin" options={uniqueData.origins.map(o => ({ label: o, value: o }))} />
                 <HeaderCell label="Favorecido" field="counterpartyName" options={uniqueData.counterparties.map(c => ({ label: c, value: c }))} />
-                <HeaderCell label="Valor" field="amount" type="text" align="right" className="pl-0.5 pr-2.5" />
+                <HeaderCell label="Valor" field="amount" type="text" align="right" className="pl-0.5 pr-2.5" isSortable={true} />
                 <th className="px-5 py-5 w-72 text-[10px] font-black uppercase tracking-widest text-slate-400">Observações</th>
                 <th className="px-2.5 py-5 w-20 text-[10px] font-black uppercase tracking-widest text-slate-400 text-center">Ações</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
-              {transactions.map((t) => {
+              {sortedTransactions.map((t) => {
+                const isDuplicate = duplicateIds.has(t.id);
                 return (
                   <tr key={t.id} className="hover:bg-indigo-50/20 transition-colors group">
                     <td className="px-2.5 py-4 text-[11px] font-bold text-slate-500 whitespace-nowrap">
@@ -402,15 +435,17 @@ const TransactionTable: React.FC<TransactionTableProps> = ({
                     </td>
 
                     <td className="px-2.5 py-4 text-center">
-                      <button 
-                        onClick={() => onDeleteTransaction(t.id)}
-                        className={`p-1.5 rounded-lg transition-all active:scale-90 ${duplicateIds.has(t.id) ? 'text-rose-400 bg-rose-50' : 'text-slate-300 hover:text-rose-600 hover:bg-rose-50'}`}
-                        title={duplicateIds.has(t.id) ? "Excluir duplicata" : "Excluir transação"}
-                      >
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
-                        </svg>
-                      </button>
+                      {isDuplicate && (
+                        <button 
+                          onClick={() => onDeleteTransaction(t.id)}
+                          className="p-1.5 rounded-lg transition-all active:scale-90 text-rose-400 bg-rose-50 hover:text-rose-600 hover:bg-rose-100"
+                          title="Excluir duplicata"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                          </svg>
+                        </button>
+                      )}
                     </td>
                   </tr>
                 );
